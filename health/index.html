@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Status</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e5e7eb; --up:#16a34a; --down:#dc2626; --warn:#d97706; --none:#e5e7eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:820px; margin:0 auto; padding:24px 16px 64px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .back { font-size:13.5px; color:var(--muted); text-decoration:none; }
+  .lang { display:flex; gap:4px; }
+  .lang button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12.5px; cursor:pointer; }
+  .lang button.on { background:var(--text); color:#fff; border-color:var(--text); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 18px; }
+  .banner { border-radius:12px; padding:16px 20px; font-weight:600; font-size:17px; margin-bottom:16px; border:1px solid; }
+  .banner.up { background:#f0fdf4; border-color:#86efac; color:var(--up); }
+  .banner.down { background:#fef2f2; border-color:#fca5a5; color:var(--down); }
+  .banner.stale { background:#fffbeb; border-color:#fcd34d; color:var(--warn); }
+  .site { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:12px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .name { font-weight:600; font-size:15.5px; display:flex; align-items:center; gap:8px; }
+  .dot { width:11px; height:11px; border-radius:50%; flex:none; }
+  .dot.up { background:var(--up); box-shadow:0 0 0 4px #16a34a22; } .dot.down { background:var(--down); box-shadow:0 0 0 4px #dc262622; }
+  .url { font-size:12.5px; color:var(--muted); margin-top:2px; word-break:break-all; }
+  .state { font-size:13.5px; font-weight:600; text-align:right; white-space:nowrap; }
+  .state.up { color:var(--up); } .state.down { color:var(--down); }
+  .bars { display:flex; gap:1px; height:30px; margin:14px 0 4px; }
+  .bars span { flex:1; border-radius:2px; background:var(--none); }
+  .bars span.up { background:var(--up); } .bars span.down { background:var(--down); } .bars span.part { background:var(--warn); }
+  .axis { display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); }
+  .stats { display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:10px; font-size:13px; color:var(--muted); }
+  .stats b { color:var(--text); font-weight:600; }
+  .warn { color:var(--warn); } .bad { color:var(--down); }
+  .inc { margin-top:10px; font-size:12.5px; color:var(--muted); }
+  .inc div { padding:3px 0; }
+  .foot, .err { font-size:12.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
+  .err { color:var(--down); }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <a class="back" href="../" data-i18n="back"></a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+    </div>
+  </div>
+  <h1 data-i18n="title"></h1>
+  <p class="sub" data-i18n="sub"></p>
+  <div id="banner"></div>
+  <div id="sites"></div>
+  <div id="err" class="err"></div>
+  <p class="foot" id="foot"></p>
+</main>
+<script>
+(() => {
+  const DATA = "https://raw.githubusercontent.com/us-sm/us-sm/status-data/status.json";
+  const TZ = "America/Phoenix";
+  const T = {
+    en: {
+      back: "← All tools", title: "System Status", sub: "Checked automatically every 10 minutes from outside the office.",
+      allUp: "All systems operational", someDown: (n) => `${n} system(s) down`, stale: "Status data is out of date. The checker may be paused.",
+      up: "Up", down: "Down", resp: "Response", up24: "Uptime 24h", up7: "Uptime 7d", cert: "SSL certificate",
+      certDays: (d) => `${d} days left`, certSoon: (d) => `expires in ${d} days`, lastCheck: "Last check",
+      ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
+      last24: "Last 24 hours", now: "Now", incidents: "Recent outages", ongoing: "ongoing",
+      foot: "Auto-refreshes every minute. \"Up\" means the server answered (a login page counts). Times are Arizona time.",
+      loadErr: "Could not load status data yet. If this tool was just set up, the first check runs within 10 minutes.",
+    },
+    ko: {
+      back: "← 전체 도구", title: "시스템 상태", sub: "사무실 외부에서 10분마다 자동으로 확인합니다.",
+      allUp: "모든 시스템 정상", someDown: (n) => `시스템 ${n}개 접속 불가`, stale: "상태 데이터가 오래되었습니다. 점검이 멈췄을 수 있습니다.",
+      up: "정상", down: "접속 불가", resp: "응답 시간", up24: "24시간 가동률", up7: "7일 가동률", cert: "SSL 인증서",
+      certDays: (d) => `${d}일 남음`, certSoon: (d) => `${d}일 후 만료`, lastCheck: "마지막 확인",
+      ago: (m) => m < 1 ? "방금" : m < 60 ? `${m}분 전` : `${Math.round(m / 60)}시간 전`,
+      last24: "최근 24시간", now: "현재", incidents: "최근 장애", ongoing: "진행 중",
+      foot: "1분마다 자동 새로고침. \"정상\"은 서버가 응답했다는 뜻입니다 (로그인 페이지 포함). 시간은 애리조나 기준입니다.",
+      loadErr: "상태 데이터를 아직 불러올 수 없습니다. 방금 설정했다면 10분 안에 첫 점검이 실행됩니다.",
+    },
+  };
+  let lang = "";
+  try { lang = localStorage.getItem("usSmLang") || ""; } catch (e) {}
+  if (!T[lang]) lang = /^ko/i.test(navigator.language || "") ? "ko" : "en";
+  const t = (k, ...a) => { const v = T[lang][k] ?? T.en[k]; return typeof v === "function" ? v(...a) : v; };
+  let data = null, err = false;
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const fmt = (s) => new Date(s * 1000).toLocaleString(lang === "ko" ? "ko-KR" : "en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const pct = (arr) => arr.length ? (arr.filter((h) => h[1] != null).length / arr.length * 100) : null;
+  const pctStr = (p) => p == null ? "-" : (p === 100 ? "100" : p.toFixed(2)) + "%";
+
+  function render() {
+    document.documentElement.lang = lang; document.title = t("title");
+    document.querySelectorAll("[data-i18n]").forEach((e) => e.textContent = t(e.dataset.i18n));
+    document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+    $("foot").textContent = t("foot");
+    $("err").textContent = err && !data ? t("loadErr") : "";
+    const sites = $("sites"), banner = $("banner"); sites.innerHTML = ""; banner.innerHTML = "";
+    if (!data) return;
+    const now = Date.now() / 1000;
+    const updated = Date.parse(data.updated) / 1000;
+    const down = data.sites.filter((s) => !s.up).length;
+    const b = el("div", "banner " + (now - updated > 45 * 60 ? "stale" : down ? "down" : "up"),
+      now - updated > 45 * 60 ? t("stale") : down ? t("someDown", down) : t("allUp"));
+    banner.append(b);
+
+    for (const s of data.sites) {
+      const card = el("div", "site");
+      const head = el("div", "head");
+      const left = el("div");
+      const nm = el("div", "name"); nm.append(el("span", "dot " + (s.up ? "up" : "down")), el("span", null, s.name));
+      left.append(nm, el("div", "url", s.url));
+      head.append(left, el("div", "state " + (s.up ? "up" : "down"), s.up ? t("up") : `${t("down")}${s.error ? " · " + s.error : ""}`));
+      card.append(head);
+
+      // 24h bar: 48 slots of 30 minutes
+      const bars = el("div", "bars"), SLOT = 1800, N = 48;
+      for (let i = N - 1; i >= 0; i--) {
+        const from = now - (i + 1) * SLOT, to = now - i * SLOT;
+        const hs = s.history.filter((h) => h[0] > from && h[0] <= to);
+        const sp = el("span");
+        if (hs.length) {
+          const ok = hs.filter((h) => h[1] != null).length;
+          sp.className = ok === hs.length ? "up" : ok === 0 ? "down" : "part";
+          sp.title = `${fmt(from)}: ${ok}/${hs.length} ${t("up")}`;
+        }
+        bars.append(sp);
+      }
+      const axis = el("div", "axis"); axis.append(el("span", null, t("last24")), el("span", null, t("now")));
+      card.append(bars, axis);
+
+      const h24 = s.history.filter((h) => h[0] > now - 86400);
+      const stats = el("div", "stats");
+      const stat = (label, val, cls) => { const d = el("span"); d.append(label + ": "); const v = el("b", cls, val); d.append(v); stats.append(d); };
+      stat(t("resp"), s.ms != null ? `${s.ms} ms` : "-");
+      stat(t("up24"), pctStr(pct(h24)));
+      stat(t("up7"), pctStr(pct(s.history)));
+      if (s.certDays != null) stat(t("cert"), s.certDays <= 14 ? t("certSoon", s.certDays) : t("certDays", s.certDays), s.certDays <= 7 ? "bad" : s.certDays <= 14 ? "warn" : null);
+      stat(t("lastCheck"), t("ago", Math.max(0, Math.round((now - s.checked) / 60))));
+      card.append(stats);
+
+      if (s.incidents && s.incidents.length) {
+        const inc = el("div", "inc"); inc.append(el("b", null, t("incidents")));
+        for (const i of s.incidents.slice(-5).reverse()) {
+          const dur = Math.round(((i.end || now) - i.start) / 60);
+          inc.append(el("div", null, `${fmt(i.start)} → ${i.end ? fmt(i.end) : t("ongoing")} (${dur} min)${i.error ? " · " + i.error : ""}`));
+        }
+        card.append(inc);
+      }
+      sites.append(card);
+    }
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(DATA + "?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      data = await r.json(); err = false;
+    } catch (e) { err = true; }
+    render();
+  }
+  document.querySelectorAll(".lang button").forEach((b) => b.onclick = () => {
+    lang = b.dataset.lang; try { localStorage.setItem("usSmLang", lang); } catch (e) {} render();
+  });
+  render(); load(); setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>

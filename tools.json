@@ -34,5 +34,17 @@
       "ko": "의심스러운 .eml을 열기 전에 검사: 발신자 위조, 가짜 링크, 위험한 첨부파일 (zip 내부, 매크로, PDF 스크립트 포함)."
     },
     "tag": "Email"
+  },
+  {
+    "path": "health/",
+    "name": {
+      "en": "System Status",
+      "ko": "시스템 상태"
+    },
+    "desc": {
+      "en": "Is ALPS2 or Hanjin ERP down? Checked every 10 minutes, with 24h/7d uptime and outage history.",
+      "ko": "ALPS2, 한진 ERP 접속 상태. 10분마다 자동 확인, 24시간/7일 가동률과 장애 기록."
+    },
+    "tag": "Status"
   }
 ]
