@@ -99,9 +99,10 @@
     document.querySelectorAll("[data-i18n]").forEach((e) => e.textContent = t(e.dataset.i18n));
     document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
     $("foot").textContent = t("foot");
-    $("err").textContent = err && !data ? t("loadErr") : "";
+    const empty = !data || !data.sites || !data.sites.length;
+    $("err").textContent = empty && (err || data) ? t("loadErr") : "";
     const sites = $("sites"), banner = $("banner"); sites.innerHTML = ""; banner.innerHTML = "";
-    if (!data) return;
+    if (empty) return;
     const now = Date.now() / 1000;
     const updated = Date.parse(data.updated) / 1000;
     const down = data.sites.filter((s) => !s.up).length;
