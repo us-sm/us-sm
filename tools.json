@@ -42,8 +42,8 @@
       "ko": "시스템 상태"
     },
     "desc": {
-      "en": "Is ALPS2 or Hanjin ERP down? Checked every 10 minutes, with 24h/7d uptime and outage history.",
-      "ko": "ALPS2, 한진 ERP 접속 상태. 10분마다 자동 확인, 24시간/7일 가동률과 장애 기록."
+      "en": "Is ALPS2 or Hanjin ERP down? Checked every 10 minutes from the office, with uptime and outage history.",
+      "ko": "ALPS2, 한진 ERP 접속 상태. 사무실에서 10분마다 자동 확인, 가동률과 장애 기록."
     },
     "tag": "Status"
   }

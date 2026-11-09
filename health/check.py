@@ -2,9 +2,9 @@
 """Health check for the sites in sites.json.
 
 Usage: check.py SITES_JSON PREV_STATUS_JSON OUT_STATUS_JSON
-Writes the new status file and prints "alert=1" (for $GITHUB_OUTPUT) when a site
-has just gone down (2 failed checks in a row), so the workflow can fail and
-GitHub emails the owner once per outage.
+Writes the new status file. A site counts as down after 2 failed checks in a row;
+main() returns the list of sites that just went down (used for alerts).
+On the office Synology this is run by agent.py, which also uploads the result.
 """
 import json, socket, ssl, sys, time, urllib.error, urllib.request
 from datetime import datetime, timezone
@@ -106,10 +106,11 @@ def main(sites_path, prev_path, out_path):
 
     json.dump({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sites": out},
               open(out_path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
-    if alert:
-        print("alert=1")
-        print("message=" + "; ".join(alert))
+    return alert
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    alerts = main(*sys.argv[1:4])
+    if alerts:
+        print("alert=1")
+        print("message=" + "; ".join(alerts))

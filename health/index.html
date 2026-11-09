@@ -62,24 +62,24 @@
   const TZ = "America/Phoenix";
   const T = {
     en: {
-      back: "← All tools", title: "System Status", sub: "Checked automatically every 10 minutes from outside the office.",
-      allUp: "All systems operational", someDown: (n) => `${n} system(s) down`, stale: "Status data is out of date. The checker may be paused.",
+      back: "← All tools", title: "System Status", sub: "Checked automatically every 10 minutes from the office network.",
+      allUp: "All systems operational", someDown: (n) => `${n} system(s) down`, stale: "Status data is out of date. The office checker (Synology) may be offline.",
       up: "Up", down: "Down", resp: "Response", up24: "Uptime 24h", up7: "Uptime 7d", cert: "SSL certificate",
       certDays: (d) => `${d} days left`, certSoon: (d) => `expires in ${d} days`, lastCheck: "Last check",
       ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
       last24: "Last 24 hours", now: "Now", incidents: "Recent outages", ongoing: "ongoing",
       foot: "Auto-refreshes every minute. \"Up\" means the server answered (a login page counts). Times are Arizona time.",
-      loadErr: "Could not load status data yet. If this tool was just set up, the first check runs within 10 minutes.",
+      loadErr: "Could not load status data yet. If this was just set up, data appears after the office checker runs for the first time.",
     },
     ko: {
-      back: "← 전체 도구", title: "시스템 상태", sub: "사무실 외부에서 10분마다 자동으로 확인합니다.",
-      allUp: "모든 시스템 정상", someDown: (n) => `시스템 ${n}개 접속 불가`, stale: "상태 데이터가 오래되었습니다. 점검이 멈췄을 수 있습니다.",
+      back: "← 전체 도구", title: "시스템 상태", sub: "사무실 네트워크에서 10분마다 자동으로 확인합니다.",
+      allUp: "모든 시스템 정상", someDown: (n) => `시스템 ${n}개 접속 불가`, stale: "상태 데이터가 오래되었습니다. 사무실 점검 장비(Synology)가 꺼져 있을 수 있습니다.",
       up: "정상", down: "접속 불가", resp: "응답 시간", up24: "24시간 가동률", up7: "7일 가동률", cert: "SSL 인증서",
       certDays: (d) => `${d}일 남음`, certSoon: (d) => `${d}일 후 만료`, lastCheck: "마지막 확인",
       ago: (m) => m < 1 ? "방금" : m < 60 ? `${m}분 전` : `${Math.round(m / 60)}시간 전`,
       last24: "최근 24시간", now: "현재", incidents: "최근 장애", ongoing: "진행 중",
       foot: "1분마다 자동 새로고침. \"정상\"은 서버가 응답했다는 뜻입니다 (로그인 페이지 포함). 시간은 애리조나 기준입니다.",
-      loadErr: "상태 데이터를 아직 불러올 수 없습니다. 방금 설정했다면 10분 안에 첫 점검이 실행됩니다.",
+      loadErr: "상태 데이터를 아직 불러올 수 없습니다. 방금 설정했다면 사무실 점검이 처음 실행된 뒤에 표시됩니다.",
     },
   };
   let lang = "";
