@@ -22,5 +22,17 @@
       "ko": "PDF 합치기·나누기·순서 변경·회전, 사진을 PDF로 변환, 큰 PDF 압축. Word/Excel/PPT는 함께 제공되는 .bat으로 PDF 변환."
     },
     "tag": "PDF"
+  },
+  {
+    "path": "eml/",
+    "name": {
+      "en": "Email Safety Check",
+      "ko": "이메일 안전 검사"
+    },
+    "desc": {
+      "en": "Check a suspicious .eml before opening it: sender spoofing, fake links, risky attachments (including zip contents, macros and PDF scripts).",
+      "ko": "의심스러운 .eml을 열기 전에 검사: 발신자 위조, 가짜 링크, 위험한 첨부파일 (zip 내부, 매크로, PDF 스크립트 포함)."
+    },
+    "tag": "Email"
   }
 ]

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Safety Check</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e5e7eb; --accent:#2563eb;
+          --ok:#16a34a; --okbg:#f0fdf4; --med:#d97706; --medbg:#fffbeb; --high:#dc2626; --highbg:#fef2f2; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:900px; margin:0 auto; padding:24px 16px 64px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .back { font-size:13.5px; color:var(--muted); text-decoration:none; }
+  .lang { display:flex; gap:4px; }
+  .lang button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12.5px; cursor:pointer; }
+  .lang button.on { background:var(--text); color:#fff; border-color:var(--text); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .drop { border:2px dashed #cbd5e1; border-radius:12px; background:var(--card); padding:28px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; }
+  .drop.over { border-color:var(--accent); background:#eff6ff; color:var(--accent); }
+  .drop b { color:var(--text); }
+  .hint { font-size:13px; color:var(--muted); }
+  .verdict { margin-top:18px; border-radius:12px; padding:18px 20px; border:1px solid var(--line); background:var(--card); }
+  .verdict.ok { background:var(--okbg); border-color:#86efac; }
+  .verdict.med { background:var(--medbg); border-color:#fcd34d; }
+  .verdict.high { background:var(--highbg); border-color:#fca5a5; }
+  .verdict h2 { margin:0 0 4px; font-size:20px; }
+  .verdict.ok h2 { color:var(--ok); } .verdict.med h2 { color:var(--med); } .verdict.high h2 { color:var(--high); }
+  .verdict p { margin:0; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; margin-top:14px; overflow:hidden; }
+  .card h3 { margin:0; font-size:14px; padding:12px 16px; border-bottom:1px solid var(--line); background:#fafafa; }
+  .finding { display:flex; gap:10px; padding:9px 16px; font-size:14px; border-top:1px solid var(--line); align-items:flex-start; }
+  .finding:first-of-type { border-top:none; }
+  .pill { flex:none; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; margin-top:1px; min-width:64px; text-align:center; }
+  .pill.high { background:var(--highbg); color:var(--high); } .pill.med { background:var(--medbg); color:var(--med); }
+  .pill.low { background:#f3f4f6; color:#4b5563; } .pill.ok { background:var(--okbg); color:var(--ok); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th, td { text-align:left; padding:8px 16px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; width:150px; }
+  td.mono, .mono { font-family:ui-monospace,Consolas,monospace; font-size:12.5px; word-break:break-all; }
+  thead th { border-top:none; background:#fafafa; width:auto; }
+  td:nth-child(2) { white-space:nowrap; }
+  a.vt { color:var(--accent); font-weight:600; white-space:nowrap; font-size:13px; }
+  pre.body { margin:0; padding:12px 16px; white-space:pre-wrap; word-break:break-word; font-size:13px; max-height:320px; overflow:auto; font-family:inherit; }
+  .empty { padding:10px 16px; font-size:14px; color:var(--muted); }
+  .note { margin-top:20px; font-size:12.5px; color:var(--muted); line-height:1.6; }
+  .err { margin-top:14px; color:var(--high); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <a class="back" href="../" data-i18n="back"></a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+    </div>
+  </div>
+  <h1 data-i18n="title"></h1>
+  <p class="sub" data-i18n="sub"></p>
+
+  <div class="drop" id="drop">
+    <span id="dropLabel" data-i18n="drop"></span>
+    <input type="file" id="file" accept=".eml,message/rfc822" hidden>
+  </div>
+  <div id="err" class="err"></div>
+  <div id="out"></div>
+  <p class="note" data-i18n="note"></p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js"></script>
+<script type="module">
+import PostalMime from "https://cdn.jsdelivr.net/npm/postal-mime@4.2.0/dist/esm/postal-mime.js";
+
+// ===== Settings: the company's own email domains (lookalikes of these are flagged) =====
+const COMPANY_DOMAINS = ["smlines.com"];
+
+// ---------- i18n ----------
+const T = {
+  en: {
+    back: "← All tools", title: "Email Safety Check",
+    sub: "Check a suspicious email (.eml) before opening links or attachments, including what is inside the attachments (zip contents, Office macros, PDF scripts, attached emails). The file is analyzed in your browser and never uploaded.",
+    drop: "<b>Drop an .eml file here</b> or click to choose<br><span class=\"hint\">In Outlook: open the email → File → Save As → choose \"Outlook Message Format\"? No: drag it to the desktop from webmail, or use File → Save As .eml where available.</span>",
+    note: "This is an automatic first check, not a guarantee. When in doubt, don't click links or open attachments, and confirm with the sender by phone (using a number you already have, not one from the email). VirusTotal links only look up the file's fingerprint (SHA-256) or a domain; nothing is uploaded.",
+    vHigh: "Dangerous: do not open links or attachments", vMed: "Be careful: some warning signs", vOk: "No obvious warning signs",
+    vHighP: "Forward this to IT and delete it.", vMedP: "Check the items below. Confirm with the sender before acting.", vOkP: "Still verify anything about payments or bank details by phone.",
+    secFind: "Findings", secSender: "Sender & authentication", secLinks: "Links", secAtt: "Attachments", secBody: "Message text (preview)",
+    lvHigh: "DANGER", lvMed: "WARNING", lvLow: "NOTE", lvOk: "OK",
+    from: "From", replyTo: "Reply-To", returnPath: "Return-Path", to: "To", subject: "Subject", date: "Date", auth: "Authentication",
+    colLink: "Link (not clickable)", colText: "Shown as", colCheck: "Check", colFile: "File", colSize: "Size", colType: "Type",
+    noLinks: "No links found.", noAtt: "No attachments.", noBody: "(empty)", none: "(none)",
+    vtDomain: "VirusTotal", vtFile: "VirusTotal",
+    badFile: "Could not read this file. Make sure it is an .eml file.", notEml: "Please choose an .eml file. (.msg files from Outlook are not supported yet.)",
+    // findings
+    fDmarcFail: "DMARC failed: the sender's domain did not approve this email. Very likely spoofed.",
+    fSpfFail: (r) => `SPF ${r}: the sending server is not authorized for this domain.`,
+    fDkimFail: "DKIM signature failed: the email may have been altered or forged.",
+    fAuthPass: "SPF, DKIM and DMARC passed: the email really came from the sender's domain (that domain can still be a scam domain).",
+    fAuthNone: "No authentication results found in the headers, so the sender can't be verified.",
+    fLookalike: (d, c) => `Sender domain "${d}" looks like our domain "${c}" but is different. Classic impersonation.`,
+    fPunyFrom: (d) => `Sender domain "${d}" uses unusual characters (punycode/non-English letters) that can imitate real domains.`,
+    fNameAddr: (n, d) => `Display name "${n}" shows a different email address than the real sender (${d}).`,
+    fReplyTo: (r, f) => `Replies go to a different domain (${r}) than the sender (${f}). Common in payment/invoice scams.`,
+    fReturnPath: (r, f) => `Return-Path domain (${r}) differs from the sender (${f}). Often normal for mailing services.`,
+    fFreemail: (d) => `Sent from a free email account (${d}). Unusual for official business email.`,
+    fJsLink: (u) => `Link uses a dangerous scheme: ${u}`,
+    fTextMismatch: (s, h) => `Link text shows "${s}" but actually goes to "${h}".`,
+    fIpLink: (h) => `Link goes to a raw IP address (${h}) instead of a domain.`,
+    fPunyLink: (h) => `Link domain "${h}" uses unusual characters that can imitate real domains.`,
+    fLookLink: (h, c) => `Link domain "${h}" looks like our domain "${c}" but is different.`,
+    fShort: (h) => `Shortened link (${h}) hides the real destination.`,
+    fFileLink: (u) => `Link downloads a risky file type: ${u}`,
+    fHttp: (n) => `${n} link(s) use plain http (not encrypted).`,
+    fForm: "The email contains a form that can submit data (e.g. a login box). Real companies don't ask for passwords in email.",
+    fRisky: (f) => `Executable/script attachment: ${f}. Never open.`,
+    fDouble: (f) => `Fake double extension: ${f}. It pretends to be a document but is a program.`,
+    fBidi: (f) => `Filename contains a hidden right-to-left character that disguises the real extension: ${f}`,
+    fMacro: (f) => `Office file with macros: ${f}. Macros are the most common way malware gets in.`,
+    fHtmlAtt: (f) => `HTML/SVG attachment: ${f}. These usually open a fake login page.`,
+    fEncZip: (f) => `Password-protected archive: ${f}. Used to hide malware from scanners.`,
+    fArchive: (f) => `Archive attachment: ${f}. Check what's inside before opening.`,
+    fLegacy: (f) => `Older Office format: ${f}. Can contain macros. If it asks to "Enable Content", don't.`,
+    fMagic: (f, k) => `${f} is actually a ${k} file, not what its name says.`,
+    fNested: (f) => `Attached email: ${f}. Its links and attachments were checked too (listed with "${f} ›").`,
+    fDeep: (f) => `Deeply nested attachment that could not be fully checked: ${f}`,
+    fWords: (w) => `Pressure/payment wording: ${w}. Typical of payment and account scams.`,
+    fHiddenMacro: (f) => `${f} contains hidden macros even though the file name says it shouldn't.`,
+    fOle: (f) => `${f} has embedded objects (OLE). These can run programs when double-clicked.`,
+    fRemoteTpl: (f, u) => `${f} loads content from the internet when opened (${u}). A known malware trick.`,
+    fPdfJs: (f) => `PDF contains JavaScript: ${f}. Normal business PDFs rarely need it.`,
+    fPdfLaunch: (f) => `PDF tries to launch a program: ${f}.`,
+    fPdfEmbed: (f) => `PDF has a file hidden inside it: ${f}.`,
+    fPdfForm: (f) => `PDF can send data to the internet (form submit): ${f}.`,
+    fRtfObj: (f) => `RTF document with embedded objects: ${f}. Common exploit vector.`,
+    kExe: "Windows program", kPdfNot: "non-PDF", fromFile: "in",
+  },
+  ko: {
+    back: "← 전체 도구", title: "이메일 안전 검사",
+    sub: "의심스러운 이메일(.eml)을 링크나 첨부파일을 열기 전에 확인하세요. 첨부파일 속(zip 안의 파일, Office 매크로, PDF 스크립트, 첨부된 메일)까지 검사합니다. 파일은 브라우저 안에서만 분석되며 업로드되지 않습니다.",
+    drop: "<b>.eml 파일을 여기에 끌어다 놓거나</b> 클릭해서 선택하세요",
+    note: "자동 1차 검사일 뿐 안전을 보장하지 않습니다. 의심되면 링크나 첨부파일을 열지 말고, 이메일에 적힌 번호가 아닌 이미 알고 있는 번호로 보낸 사람에게 전화해서 확인하세요. VirusTotal 링크는 파일 지문(SHA-256)이나 도메인만 조회하며, 아무것도 업로드하지 않습니다.",
+    vHigh: "위험: 링크나 첨부파일을 열지 마세요", vMed: "주의: 의심스러운 점이 있습니다", vOk: "뚜렷한 위험 신호 없음",
+    vHighP: "IT 담당자에게 전달한 뒤 삭제하세요.", vMedP: "아래 항목을 확인하고, 처리하기 전에 보낸 사람에게 확인하세요.", vOkP: "결제나 계좌 관련 내용은 그래도 전화로 확인하세요.",
+    secFind: "검사 결과", secSender: "보낸 사람 및 인증", secLinks: "링크", secAtt: "첨부파일", secBody: "본문 미리보기",
+    lvHigh: "위험", lvMed: "주의", lvLow: "참고", lvOk: "정상",
+    from: "보낸 사람", replyTo: "답장 주소", returnPath: "Return-Path", to: "받는 사람", subject: "제목", date: "날짜", auth: "인증 결과",
+    colLink: "링크 (클릭 불가)", colText: "표시된 글자", colCheck: "조회", colFile: "파일", colSize: "크기", colType: "형식",
+    noLinks: "링크 없음.", noAtt: "첨부파일 없음.", noBody: "(내용 없음)", none: "(없음)",
+    vtDomain: "VirusTotal", vtFile: "VirusTotal",
+    badFile: "파일을 읽을 수 없습니다. .eml 파일인지 확인하세요.", notEml: ".eml 파일을 선택하세요. (Outlook .msg 파일은 아직 지원하지 않습니다.)",
+    fDmarcFail: "DMARC 실패: 보낸 사람 도메인이 이 메일을 승인하지 않았습니다. 위조일 가능성이 매우 높습니다.",
+    fSpfFail: (r) => `SPF ${r}: 이 도메인에서 허용하지 않은 서버가 보낸 메일입니다.`,
+    fDkimFail: "DKIM 서명 실패: 메일이 변조되었거나 위조되었을 수 있습니다.",
+    fAuthPass: "SPF, DKIM, DMARC 통과: 실제로 해당 도메인에서 보낸 메일입니다. (그 도메인 자체가 사기용일 수는 있습니다)",
+    fAuthNone: "헤더에 인증 결과가 없어서 보낸 사람을 확인할 수 없습니다.",
+    fLookalike: (d, c) => `보낸 사람 도메인 "${d}"이(가) 우리 도메인 "${c}"과(와) 비슷하지만 다릅니다. 전형적인 사칭입니다.`,
+    fPunyFrom: (d) => `보낸 사람 도메인 "${d}"에 진짜 도메인을 흉내 낼 수 있는 특수 문자(퓨니코드/외국 문자)가 있습니다.`,
+    fNameAddr: (n, d) => `표시 이름 "${n}"에 실제 보낸 주소(${d})와 다른 이메일 주소가 적혀 있습니다.`,
+    fReplyTo: (r, f) => `답장이 보낸 사람(${f})과 다른 도메인(${r})으로 갑니다. 송금/인보이스 사기에서 흔합니다.`,
+    fReturnPath: (r, f) => `Return-Path 도메인(${r})이 보낸 사람(${f})과 다릅니다. 대량 메일 서비스에서는 정상인 경우가 많습니다.`,
+    fFreemail: (d) => `무료 이메일 계정(${d})에서 보냈습니다. 공식 업무 메일로는 드문 경우입니다.`,
+    fJsLink: (u) => `위험한 형식의 링크: ${u}`,
+    fTextMismatch: (s, h) => `링크에는 "${s}"(이)라고 보이지만 실제로는 "${h}"(으)로 연결됩니다.`,
+    fIpLink: (h) => `도메인이 아닌 IP 주소(${h})로 연결되는 링크입니다.`,
+    fPunyLink: (h) => `링크 도메인 "${h}"에 진짜 도메인을 흉내 낼 수 있는 특수 문자가 있습니다.`,
+    fLookLink: (h, c) => `링크 도메인 "${h}"이(가) 우리 도메인 "${c}"과(와) 비슷하지만 다릅니다.`,
+    fShort: (h) => `단축 URL(${h})이라 실제 목적지가 숨겨져 있습니다.`,
+    fFileLink: (u) => `위험한 파일을 내려받는 링크: ${u}`,
+    fHttp: (n) => `암호화되지 않은 http 링크 ${n}개.`,
+    fForm: "메일 안에 정보를 전송하는 입력 양식(로그인 창 등)이 있습니다. 정상적인 회사는 메일로 비밀번호를 묻지 않습니다.",
+    fRisky: (f) => `실행 파일/스크립트 첨부: ${f}. 절대 열지 마세요.`,
+    fDouble: (f) => `가짜 이중 확장자: ${f}. 문서처럼 보이지만 실제로는 프로그램입니다.`,
+    fBidi: (f) => `파일 이름에 실제 확장자를 숨기는 특수 문자가 들어 있습니다: ${f}`,
+    fMacro: (f) => `매크로가 포함된 Office 파일: ${f}. 악성코드가 들어오는 가장 흔한 방법입니다.`,
+    fHtmlAtt: (f) => `HTML/SVG 첨부: ${f}. 보통 가짜 로그인 페이지를 엽니다.`,
+    fEncZip: (f) => `비밀번호가 걸린 압축 파일: ${f}. 백신 검사를 피하려고 자주 쓰입니다.`,
+    fArchive: (f) => `압축 파일 첨부: ${f}. 열기 전에 안에 뭐가 있는지 확인하세요.`,
+    fLegacy: (f) => `구형 Office 형식: ${f}. 매크로가 들어 있을 수 있습니다. "콘텐츠 사용"을 누르라고 하면 누르지 마세요.`,
+    fMagic: (f, k) => `${f}은(는) 이름과 달리 실제로는 ${k} 파일입니다.`,
+    fNested: (f) => `메일 안에 첨부된 메일: ${f}. 그 안의 링크와 첨부파일도 함께 검사했습니다 ("${f} ›"로 표시).`,
+    fDeep: (f) => `너무 깊이 중첩되어 끝까지 검사하지 못한 첨부: ${f}`,
+    fWords: (w) => `압박/결제 관련 표현: ${w}. 송금이나 계정 사기에서 흔한 표현입니다.`,
+    fHiddenMacro: (f) => `${f}에 파일 이름과 달리 숨겨진 매크로가 들어 있습니다.`,
+    fOle: (f) => `${f}에 내장 개체(OLE)가 있습니다. 더블클릭하면 프로그램이 실행될 수 있습니다.`,
+    fRemoteTpl: (f, u) => `${f}이(가) 열릴 때 인터넷에서 내용을 불러옵니다 (${u}). 알려진 악성코드 수법입니다.`,
+    fPdfJs: (f) => `PDF 안에 JavaScript가 있습니다: ${f}. 일반 업무용 PDF에는 거의 필요 없습니다.`,
+    fPdfLaunch: (f) => `PDF가 프로그램을 실행하려고 합니다: ${f}.`,
+    fPdfEmbed: (f) => `PDF 안에 다른 파일이 숨겨져 있습니다: ${f}.`,
+    fPdfForm: (f) => `PDF가 인터넷으로 데이터를 보낼 수 있습니다 (양식 전송): ${f}.`,
+    fRtfObj: (f) => `내장 개체가 있는 RTF 문서: ${f}. 자주 쓰이는 공격 수법입니다.`,
+    kExe: "Windows 실행", kPdfNot: "PDF가 아닌", fromFile: "위치",
+  },
+};
+// The English drop hint above was a draft; keep it short and clear.
+T.en.drop = "<b>Drop an .eml file here</b> or click to choose";
+
+let lang = "";
+try { lang = localStorage.getItem("usSmLang") || ""; } catch (e) {}
+if (!T[lang]) lang = /^ko/i.test(navigator.language || "") ? "ko" : "en";
+const t = (k, ...a) => { const v = T[lang][k] ?? T.en[k]; return typeof v === "function" ? v(...a) : v; };
+let last = null, lastName = null;
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    if (el.id === "dropLabel" && lastName) return;
+    el.innerHTML = t(el.dataset.i18n);
+  });
+  document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  if (last) render(last);
+}
+document.querySelectorAll(".lang button").forEach((b) => b.onclick = () => {
+  lang = b.dataset.lang;
+  try { localStorage.setItem("usSmLang", lang); } catch (e) {}
+  applyLang();
+});
+applyLang();
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v; else if (k === "text") el.textContent = v; else el.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null) el.append(c instanceof Node ? c : String(c));
+  return el;
+}
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+const domainOf = (addr) => (addr || "").split("@").pop().toLowerCase().trim();
+const SLD = new Set(["co.kr","or.kr","go.kr","ne.kr","re.kr","ac.kr","co.uk","org.uk","com.au","co.jp","com.cn","com.sg","com.hk","com.tw","com.br","com.mx","co.in","com.vn","co.id","com.my","com.ph"]);
+function baseDomain(host) {
+  const p = (host || "").toLowerCase().replace(/\.$/, "").split(".");
+  if (p.length <= 2) return p.join(".");
+  const last2 = p.slice(-2).join(".");
+  return SLD.has(last2) ? p.slice(-3).join(".") : last2;
+}
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+const isOurs = (host) => COMPANY_DOMAINS.some((c) => host === c || host.endsWith("." + c));
+function lookalikeOf(host) {
+  if (!host || isOurs(host)) return null;
+  const labels = host.toLowerCase().split(".");
+  for (const c of COMPANY_DOMAINS) {
+    const core = c.split(".")[0];
+    const stem = core.replace(/s$/, "");
+    for (const l of labels) {
+      if (l.length < 4) continue;
+      const clean = l.replace(/[-_0-9]/g, "");
+      if (l.includes(stem) || lev(clean, core) <= 2 || (labels.join("").includes(core))) return c;
+    }
+  }
+  return null;
+}
+const isPunyOrUnicode = (host) => /(^|\.)xn--/i.test(host) || /[^\x00-\x7f]/.test(host);
+const FREEMAIL = new Set(["gmail.com","googlemail.com","outlook.com","hotmail.com","live.com","msn.com","yahoo.com","yahoo.co.kr","aol.com","icloud.com","me.com","mail.com","gmx.com","proton.me","protonmail.com","zoho.com","yandex.com","naver.com","daum.net","hanmail.net","nate.com","kakao.com","qq.com","163.com","126.com"]);
+const SHORTENERS = new Set(["bit.ly","tinyurl.com","t.co","goo.gl","ow.ly","is.gd","buff.ly","rebrand.ly","cutt.ly","shorturl.at","rb.gy","tiny.cc","lnkd.in","t.ly","s.id","shorte.st","bl.ink","short.io","me2.do","han.gl","vo.la"]);
+const RISKY = new Set("exe scr com pif bat cmd vbs vbe js jse wsf wsh hta msi msp lnk ps1 psm1 jar reg cpl dll iso img vhd vhdx appx appxbundle msix msixbundle one url scf chm application gadget inf sct ws".split(" "));
+const MACRO = new Set("docm dotm xlsm xltm xlam xlsb pptm potm ppam ppsm sldm".split(" "));
+const LEGACY = new Set("doc dot xls xlt ppt pps rtf".split(" "));
+const HTMLX = new Set("html htm shtml xhtml svg mht mhtml".split(" "));
+const ARCH = new Set("zip rar 7z gz tgz tar cab arj ace lzh bz2 xz z".split(" "));
+const DOCLIKE = /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|gif|txt|csv|rtf)$/i;
+const extOf = (name) => { const m = /\.([a-z0-9]{1,12})$/i.exec(name || ""); return m ? m[1].toLowerCase() : ""; };
+const WORDS = {
+  en: ["wire transfer","bank details","banking details","bank account","change of bank","new account","account number","remittance","overdue","past due","urgent","immediately","asap","verify your account","confirm your","password","suspended","unusual activity","gift card","payment"],
+  ko: ["긴급","송금","입금","계좌 변경","계좌번호","변경된 계좌","비밀번호","결제","즉시","확인 요청"],
+};
+async function sha256(buf) {
+  const d = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function vtUrlId(u) {
+  const bytes = new TextEncoder().encode(u);
+  let bin = ""; bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function sniff(u8) {
+  if (u8[0] === 0x4d && u8[1] === 0x5a) return "exe";
+  if (u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46) return "pdf";
+  if (u8[0] === 0x50 && u8[1] === 0x4b) return "zip";
+  if (u8[0] === 0xd0 && u8[1] === 0xcf && u8[2] === 0x11 && u8[3] === 0xe0) return "ole";
+  return "";
+}
+function zipEncrypted(u8) {
+  // scan local file headers (PK\x03\x04) and check general purpose bit 0
+  for (let i = 0; i + 8 < u8.length && i < 5e6; i++) {
+    if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 3 && u8[i + 3] === 4) {
+      if (u8[i + 6] & 1) return true;
+    }
+  }
+  return false;
+}
+
+// ---------- input ----------
+const drop = $("drop"), input = $("file");
+drop.addEventListener("click", () => input.click());
+input.addEventListener("change", () => { if (input.files[0]) handle(input.files[0]); input.value = ""; });
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]); });
+
+async function handle(file) {
+  $("err").textContent = ""; $("out").innerHTML = "";
+  if (/\.msg$/i.test(file.name)) { $("err").textContent = t("notEml"); return; }
+  try {
+    const buf = await file.arrayBuffer();
+    const email = await PostalMime.parse(buf);
+    if (!email.headers || !email.headers.length) throw new Error("no headers");
+    lastName = file.name;
+    $("dropLabel").textContent = `${file.name} (${kb(file.size)})`;
+    last = await analyze(email);
+    render(last);
+  } catch (e) {
+    console.error(e); $("err").textContent = t("badFile");
+  }
+}
+
+// ---------- deep file scan ----------
+const OOXML = /^(docx|docm|dotx|dotm|xlsx|xlsm|xltx|xltm|xlam|xlsb|pptx|pptm|potx|potm|ppsx|ppsm|ppam|sldm)$/;
+const latin1 = (u8, max = 20e6) => { let s = ""; const n = Math.min(u8.length, max); for (let i = 0; i < n; i += 65536) s += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + 65536, n))); return s; };
+let scanBudget = 0;
+async function scanFile(f, add, atts, links) {
+  const { name, type, u8, path, depth } = f;
+  const full = path ? path + " › " + name : name;
+  const ext = extOf(name);
+  const rec = { name: full, size: u8.length, type, hash: await sha256(u8), lv: null, depth };
+  atts.push(rec);
+  const rank = { high: 0, med: 1, low: 2 };
+  const flag = (lv, key, ...args) => { add(lv, key, ...args); if (!rec.lv || rank[lv] < rank[rec.lv]) rec.lv = lv; };
+  const kind = sniff(u8);
+
+  if (/[‪-‮⁦-⁩]/.test(name)) flag("high", "fBidi", full);
+  if (RISKY.has(ext)) {
+    const stem = name.slice(0, -(ext.length + 1));
+    DOCLIKE.test(stem) || /\s{3,}$/.test(stem) ? flag("high", "fDouble", full) : flag("high", "fRisky", full);
+  } else if (kind === "exe") flag("high", "fMagic", full, t("kExe"));
+  if (MACRO.has(ext)) flag("high", "fMacro", full);
+  if (HTMLX.has(ext) || /^text\/html|image\/svg/.test(type)) flag("high", "fHtmlAtt", full);
+  if (ext === "pdf" && kind && kind !== "pdf") flag("med", "fMagic", full, t("kPdfNot"));
+  if (f.deep) flag("med", "fDeep", full);
+  if (depth >= 4 || (scanBudget += u8.length) > 200e6) return; // stop runaway nesting / huge archives
+
+  // ZIP containers: Office (OOXML) files and archives
+  if (kind === "zip") {
+    if (OOXML.test(ext)) {
+      let zip = null;
+      try { zip = await JSZip.loadAsync(u8); } catch {}
+      if (!zip) return;
+      const files = Object.keys(zip.files);
+      if (files.some((n) => /vbaProject\.bin$/i.test(n)) && !MACRO.has(ext)) flag("high", "fHiddenMacro", full);
+      if (files.some((n) => /\/embeddings\/.*(oleObject|\.bin$)/i.test(n))) flag("med", "fOle", full);
+      for (const n of files.filter((n) => /\.rels$/i.test(n)).slice(0, 50)) {
+        const x = await zip.files[n].async("string");
+        for (const m of x.matchAll(/<Relationship\b[^>]*>/gi)) {
+          const tag = m[0];
+          if (!/TargetMode="External"/i.test(tag)) continue;
+          const tg = (/Target="([^"]+)"/i.exec(tag) || [])[1] || "";
+          if (/attachedTemplate|oleObject|frame|subDocument/i.test(tag) && /^(https?:|\\\\|file:)/i.test(tg)) flag("high", "fRemoteTpl", full, tg.slice(0, 100));
+          else if (/^https?:/i.test(tg)) links.push({ href: tg, text: "", from: full });
+        }
+      }
+      return;
+    }
+    if (/^(odt|ods|odp|jar|apk|epub)$/.test(ext)) return;
+    if (zipEncrypted(u8)) { flag("high", "fEncZip", full); return; }
+    let zip = null;
+    try { zip = await JSZip.loadAsync(u8); } catch {}
+    if (!zip) { flag("med", "fArchive", full); return; }
+    const entries = Object.values(zip.files).filter((e) => !e.dir).slice(0, 300);
+    for (const e of entries) {
+      let data; try { data = await e.async("uint8array"); } catch { continue; }
+      await scanFile({ name: e.name.split("/").pop(), type: "", u8: data, path: full, depth: depth + 1 }, add, atts, links);
+    }
+    return;
+  }
+  if (ARCH.has(ext)) { flag("med", "fArchive", full); return; } // rar/7z etc. can't be opened in the browser
+
+  // PDF: scripts, launch actions, embedded files, links
+  if (kind === "pdf") {
+    const s = latin1(u8);
+    if (/\/(JavaScript|JS)\b/.test(s)) flag("high", "fPdfJs", full);
+    if (/\/Launch\b/.test(s)) flag("high", "fPdfLaunch", full);
+    if (/\/EmbeddedFile\b/.test(s)) flag("med", "fPdfEmbed", full);
+    if (/\/(SubmitForm|ImportData)\b/.test(s)) flag("med", "fPdfForm", full);
+    for (const m of s.matchAll(/\/URI\s*\(([^)]{4,500})\)/g)) {
+      const href = m[1].replace(/\\([()\\])/g, "$1");
+      if (/^https?:/i.test(href)) links.push({ href, text: "", from: full });
+    }
+    return;
+  }
+
+  // Legacy Office (OLE)
+  if (kind === "ole") {
+    const s = latin1(u8);
+    const s16 = s.replace(/\0/g, "");
+    if (/_VBA_PROJECT|Attribute VB_/.test(s) || /_VBA_PROJECT/.test(s16)) flag("high", "fMacro", full);
+    else if (LEGACY.has(ext)) flag("low", "fLegacy", full);
+    return;
+  }
+  // RTF with embedded objects
+  if (ext === "rtf" || /^\{\\rtf/.test(latin1(u8.subarray(0, 8)))) {
+    if (/\\objdata|\\objupdate|\\object\b/.test(latin1(u8))) flag("high", "fRtfObj", full);
+    return;
+  }
+  // Attached email: parse and scan its links and attachments too
+  if (ext === "eml" || type === "message/rfc822") {
+    flag("low", "fNested", full);
+    try {
+      const inner = await PostalMime.parse(u8);
+      if (inner.html) {
+        const doc = new DOMParser().parseFromString(inner.html, "text/html");
+        for (const a of doc.querySelectorAll("a[href]")) links.push({ href: a.getAttribute("href").trim(), text: (a.textContent || "").replace(/\s+/g, " ").trim(), from: full });
+      }
+      for (const a of inner.attachments || []) {
+        const b = typeof a.content === "string" ? new TextEncoder().encode(a.content) : new Uint8Array(a.content);
+        await scanFile({ name: a.filename || "(no name)", type: a.mimeType || "", u8: b, path: full, depth: depth + 1, deep: !!a.rfc822DepthExceeded }, add, atts, links);
+      }
+    } catch {}
+    return;
+  }
+  if (LEGACY.has(ext)) flag("low", "fLegacy", full);
+}
+
+// ---------- analysis ----------
+async function analyze(email) {
+  scanBudget = 0;
+  const F = []; // {lv: high|med|low|ok, key, args}
+  const add = (lv, key, ...args) => F.push({ lv, key, args });
+  const hdr = (k) => email.headers.filter((x) => x.key === k).map((x) => x.value);
+
+  // sender
+  const fromAddr = email.from?.address || "";
+  const fromName = email.from?.name || "";
+  const fromDom = domainOf(fromAddr);
+  const replyTo = (email.replyTo || []).map((a) => a.address).filter(Boolean);
+  const returnPath = email.returnPath || "";
+
+  // authentication (topmost header = added by our receiving server)
+  const ar = hdr("authentication-results")[0] || hdr("arc-authentication-results")[0] || "";
+  const pick = (re) => { const m = re.exec(ar); return m ? m[1].toLowerCase() : null; };
+  let spf = pick(/\bspf=(\w+)/i), dkim = pick(/\bdkim=(\w+)/i), dmarc = pick(/\bdmarc=(\w+)/i);
+  if (/\bdkim=pass/i.test(ar)) dkim = "pass";
+  if (!spf) { const r = hdr("received-spf")[0]; if (r) spf = (/^\s*(\w+)/.exec(r) || [])[1]?.toLowerCase() || null; }
+  const authStr = `SPF: ${spf || "-"} · DKIM: ${dkim || "-"} · DMARC: ${dmarc || "-"}`;
+  if (dmarc === "fail") add("high", "fDmarcFail");
+  if (spf === "fail" || spf === "softfail") add(dmarc === "pass" ? "low" : "med", "fSpfFail", spf);
+  if (dkim === "fail") add(dmarc === "pass" ? "low" : "med", "fDkimFail");
+  if (!spf && !dkim && !dmarc) add("low", "fAuthNone");
+  if (spf === "pass" && dkim === "pass" && dmarc === "pass") add("ok", "fAuthPass");
+
+  if (fromDom) {
+    const lk = lookalikeOf(fromDom);
+    if (lk) add("high", "fLookalike", fromDom, lk);
+    if (isPunyOrUnicode(fromDom)) add("high", "fPunyFrom", fromDom);
+    if (FREEMAIL.has(fromDom)) add("low", "fFreemail", fromDom);
+  }
+  const nameMail = /[\w.+-]+@([\w-]+\.)+[a-z]{2,}/i.exec(fromName);
+  if (nameMail && domainOf(nameMail[0]) !== fromDom) add("high", "fNameAddr", fromName, fromDom);
+  for (const r of replyTo) {
+    const rd = domainOf(r);
+    if (rd && fromDom && baseDomain(rd) !== baseDomain(fromDom)) { add(FREEMAIL.has(rd) || lookalikeOf(rd) ? "high" : "med", "fReplyTo", rd, fromDom); break; }
+  }
+  const rpd = domainOf(returnPath);
+  if (rpd && fromDom && baseDomain(rpd) !== baseDomain(fromDom)) add("low", "fReturnPath", rpd, fromDom);
+
+  // links
+  const links = [];
+  const seen = new Set();
+  let bodyText = email.text || "";
+  let hasForm = false;
+  if (email.html) {
+    const doc = new DOMParser().parseFromString(email.html, "text/html"); // inert: no scripts run, no images load
+    hasForm = !!doc.querySelector("form, input[type=password]");
+    for (const a of doc.querySelectorAll("a[href], area[href]")) {
+      const href = (a.getAttribute("href") || "").trim();
+      if (!href || href.startsWith("#") || /^mailto:|^tel:/i.test(href)) continue;
+      const text = (a.textContent || "").replace(/\s+/g, " ").trim();
+      const key = href + "|" + text;
+      if (!seen.has(key)) { seen.add(key); links.push({ href, text }); }
+    }
+    if (!bodyText) bodyText = (doc.body?.innerText || doc.body?.textContent || "").replace(/\n{3,}/g, "\n\n");
+  }
+  for (const m of (email.text || "").matchAll(/\bhttps?:\/\/[^\s<>"')\]]+/gi)) {
+    const href = m[0].replace(/[.,;:]+$/, "");
+    if (![...seen].some((k) => k.startsWith(href + "|"))) { seen.add(href + "|"); links.push({ href, text: "" }); }
+  }
+  // attachments (deep: zip contents, Office macros, PDF scripts, attached emails)
+  const atts = [];
+  for (const a of email.attachments || []) {
+    const name = a.filename || (a.mimeType === "message/rfc822" ? "message.eml" : "(no name)");
+    const buf = typeof a.content === "string" ? new TextEncoder().encode(a.content).buffer : a.content;
+    await scanFile({ name, type: a.mimeType || "", u8: new Uint8Array(buf), path: "", depth: 0, deep: !!a.rfc822DepthExceeded }, add, atts, links);
+  }
+
+  if (hasForm) add("high", "fForm");
+  let httpCount = 0;
+  const flagged = new Set();
+  for (const L of links) {
+    L.checks = [];
+    if (/^\s*(javascript|data|vbscript|file):/i.test(L.href)) { add("high", "fJsLink", L.href.slice(0, 80)); L.bad = "high"; continue; }
+    let u; try { u = new URL(L.href); } catch { continue; }
+    if (!/^https?:$/.test(u.protocol)) continue;
+    const host = u.hostname.toLowerCase();
+    L.host = host;
+    const once = (k, lv, key, ...a) => { if (!flagged.has(k)) { flagged.add(k); add(lv, key, ...a); } L.bad = L.bad === "high" ? "high" : lv; };
+    if (u.protocol === "http:") httpCount++;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[")) once("ip" + host, "high", "fIpLink", host);
+    if (isPunyOrUnicode(host)) once("pu" + host, "high", "fPunyLink", host);
+    const lk = lookalikeOf(host); if (lk) once("lk" + host, "high", "fLookLink", host, lk);
+    if (SHORTENERS.has(host.replace(/^www\./, ""))) once("sh" + host, "med", "fShort", host);
+    const fx = extOf(u.pathname);
+    if (RISKY.has(fx) || HTMLX.has(fx) && fx !== "html" && fx !== "htm" || MACRO.has(fx) || ARCH.has(fx)) once("fx" + L.href, RISKY.has(fx) ? "high" : "med", "fFileLink", L.href.slice(0, 100));
+    const tm = /^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[\/:?#]\S*)?$/i.exec(L.text);
+    if (tm) {
+      const shown = tm[1].toLowerCase();
+      if (baseDomain(shown) !== baseDomain(host)) once("tm" + shown + host, "high", "fTextMismatch", shown, host);
+    }
+  }
+  if (httpCount) add("low", "fHttp", httpCount);
+
+  // wording
+  const hay = ((email.subject || "") + "\n" + bodyText).toLowerCase();
+  const hits = [...WORDS.en, ...WORDS.ko].filter((w) => hay.includes(w.toLowerCase()));
+  if (hits.length) add(hits.length >= 3 ? "med" : "low", "fWords", hits.slice(0, 6).join(", "));
+
+  // verdict
+  const n = (lv) => F.filter((f) => f.lv === lv).length;
+  const verdict = n("high") ? "high" : (n("med") || n("low") >= 3) ? "med" : "ok";
+  const order = { high: 0, med: 1, low: 2, ok: 3 };
+  F.sort((a, b) => order[a.lv] - order[b.lv]);
+
+  return {
+    verdict, findings: F, links, atts, authStr,
+    from: fromName ? `${fromName} <${fromAddr}>` : fromAddr,
+    replyTo: replyTo.join(", "), returnPath,
+    to: (email.to || []).map((x) => x.address || x.name).join(", "),
+    subject: email.subject || "", date: email.date || "",
+    body: bodyText.trim().slice(0, 4000),
+  };
+}
+
+// ---------- render ----------
+function render(r) {
+  const out = $("out"); out.innerHTML = "";
+  const vk = { high: ["vHigh", "vHighP"], med: ["vMed", "vMedP"], ok: ["vOk", "vOkP"] }[r.verdict];
+  out.append(h("div", { class: "verdict " + r.verdict }, h("h2", { text: t(vk[0]) }), h("p", { text: t(vk[1]) })));
+
+  const lvName = { high: "lvHigh", med: "lvMed", low: "lvLow", ok: "lvOk" };
+  out.append(h("div", { class: "card" }, h("h3", { text: t("secFind") }),
+    r.findings.length ? r.findings.map((f) => h("div", { class: "finding" }, h("span", { class: "pill " + f.lv, text: t(lvName[f.lv]) }), h("span", { text: t(f.key, ...f.args) })))
+      : h("div", { class: "empty", text: t("none") })));
+
+  const row = (k, v) => h("tr", {}, h("th", { text: t(k) }), h("td", { class: "mono", text: v || t("none") }));
+  out.append(h("div", { class: "card" }, h("h3", { text: t("secSender") }),
+    h("table", {}, h("tbody", {}, row("from", r.from), row("replyTo", r.replyTo), row("returnPath", r.returnPath), row("to", r.to), row("subject", r.subject), row("date", r.date), row("auth", r.authStr)))));
+
+  const linkRows = r.links.slice(0, 100).map((L) => h("tr", {},
+    h("td", { class: "mono" }, L.bad ? h("span", { class: "pill " + L.bad, text: t(lvName[L.bad]) }) : null, " ", L.href),
+    h("td", { text: L.from ? `${t("fromFile")}: ${L.from}` : (L.text && L.text !== L.href ? L.text.slice(0, 80) : "") }),
+    h("td", {}, L.host ? [
+      h("a", { class: "vt", href: "https://www.virustotal.com/gui/url/" + vtUrlId(L.href), target: "_blank", rel: "noopener noreferrer", text: "URL" }), " · ",
+      h("a", { class: "vt", href: "https://www.virustotal.com/gui/domain/" + encodeURIComponent(L.host), target: "_blank", rel: "noopener noreferrer", text: "Domain" }),
+    ] : null)));
+  out.append(h("div", { class: "card" }, h("h3", { text: `${t("secLinks")} (${r.links.length})` }),
+    r.links.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", { text: t("colLink") }), h("th", { text: t("colText") }), h("th", { text: t("colCheck") + " (VirusTotal)" }))), h("tbody", {}, linkRows))
+      : h("div", { class: "empty", text: t("noLinks") })));
+
+  const attRows = r.atts.map((a) => h("tr", {},
+    h("td", {}, a.lv ? h("span", { class: "pill " + a.lv, text: t(lvName[a.lv]) }) : null, " ", a.name, h("div", { class: "mono hint", text: "SHA-256 " + a.hash })),
+    h("td", { text: kb(a.size) }), h("td", { class: "mono", text: a.type }),
+    h("td", {}, h("a", { class: "vt", href: "https://www.virustotal.com/gui/file/" + a.hash, target: "_blank", rel: "noopener noreferrer", text: t("vtFile") }))));
+  out.append(h("div", { class: "card" }, h("h3", { text: `${t("secAtt")} (${r.atts.length})` }),
+    r.atts.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", { text: t("colFile") }), h("th", { text: t("colSize") }), h("th", { text: t("colType") }), h("th", { text: t("colCheck") }))), h("tbody", {}, attRows))
+      : h("div", { class: "empty", text: t("noAtt") })));
+
+  out.append(h("div", { class: "card" }, h("h3", { text: t("secBody") }), h("pre", { class: "body", text: r.body || t("noBody") })));
+}
+</script>
+</body>
+</html>
