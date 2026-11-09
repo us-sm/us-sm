@@ -1,0 +1,11 @@
+[
+  {
+    "path": "docx-merge/",
+    "name": { "en": "Merge Word Files", "ko": "Word 파일 합치기" },
+    "desc": {
+      "en": "Combine .docx files into one while keeping each file's margins and layout.",
+      "ko": "여러 .docx 파일을 각 파일의 여백과 레이아웃을 유지한 채 하나로 합칩니다."
+    },
+    "tag": "Word"
+  }
+]
