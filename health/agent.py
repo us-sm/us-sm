@@ -36,6 +36,7 @@ def gh(method, url, body=None):
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "us-sm-health-agent",
+        "Content-Type": "application/json",
     })
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
