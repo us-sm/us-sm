@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Tools</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e5e7eb; --accent:#2563eb; --sel:#dbeafe; --danger:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .tab { padding:10px 16px; border:none; background:none; font:inherit; font-size:14px; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  .panel { display:none; } .panel.active { display:block; }
+  .drop { border:2px dashed #cbd5e1; border-radius:12px; background:var(--card); padding:28px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; }
+  .drop.over { border-color:var(--accent); background:#eff6ff; color:var(--accent); }
+  .drop b { color:var(--text); }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
+  button.btn { font:inherit; font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); cursor:pointer; }
+  button.btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.btn:disabled { opacity:.45; cursor:not-allowed; }
+  select, input[type=text] { font:inherit; font-size:14px; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); }
+  label.inline { font-size:14px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+  .pg { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; cursor:grab; position:relative; user-select:none; }
+  .pg.sel { outline:2px solid var(--accent); background:var(--sel); }
+  .pg.dragging { opacity:.4; }
+  .pg.drop-before { box-shadow:-4px 0 0 var(--accent); }
+  .thumb { height:170px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .thumb img { max-width:100%; max-height:160px; box-shadow:0 1px 3px #0002; transition:transform .15s; }
+  .thumb img.r90, .thumb img.r270 { max-width:170px; max-height:130px; }
+  .meta { font-size:12px; color:var(--muted); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .num { position:absolute; top:6px; left:6px; background:#111827cc; color:#fff; font-size:11px; padding:1px 6px; border-radius:6px; }
+  .acts { display:flex; justify-content:center; gap:4px; margin-top:6px; }
+  .acts button { border:1px solid var(--line); background:#fff; border-radius:6px; width:30px; height:26px; cursor:pointer; font-size:14px; }
+  .acts button.del:hover { color:var(--danger); border-color:var(--danger); }
+  .hint { font-size:13px; color:var(--muted); }
+  .status { font-size:14px; color:var(--accent); min-height:20px; margin:8px 0; }
+  .result { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-top:14px; font-size:14px; }
+  .result a { color:var(--accent); font-weight:600; }
+  .warn { color:#b45309; }
+  .office { font-size:13px; color:var(--muted); margin-top:10px; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--card); }
+  .office a { color:var(--accent); font-weight:600; }
+  .office.alert { border-color:#f59e0b; background:#fffbeb; color:#92400e; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .back { font-size:13.5px; color:var(--muted); text-decoration:none; }
+  .lang { display:flex; gap:4px; }
+  .lang button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12.5px; cursor:pointer; }
+  .lang button.on { background:var(--text); color:#fff; border-color:var(--text); }
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:10px 16px; border-radius:8px; font-size:14px; display:none; max-width:90vw; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <a class="back" href="../" data-i18n="back"></a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+    </div>
+  </div>
+  <h1 data-i18n="title"></h1>
+  <p class="sub" data-i18n="sub"></p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="edit" data-i18n="tabEdit"></button>
+    <button class="tab" data-tab="compress" data-i18n="tabComp"></button>
+  </div>
+
+  <!-- ===== Edit ===== -->
+  <section class="panel active" id="panel-edit">
+    <div class="drop" id="dropEdit">
+      <span data-i18n="dropEdit"></span>
+      <input type="file" id="fileEdit" multiple accept="application/pdf,image/*,.heic" hidden>
+    </div>
+    <div class="office" id="officeNote">
+      <span data-i18n="office"></span>
+      <span id="officeSkipped"></span>
+    </div>
+
+    <div class="bar">
+      <button class="btn primary" id="btnSaveAll" disabled data-i18n="saveAll"></button>
+      <button class="btn" id="btnSaveSel" disabled></button>
+      <button class="btn" id="btnSplit" disabled data-i18n="split"></button>
+      <button class="btn" id="btnClear" disabled data-i18n="clear"></button>
+      <label class="inline"><span data-i18n="fileName"></span> <input type="text" id="outName" value="merged" size="14"></label>
+      <label class="inline"><span data-i18n="imgSize"></span>
+        <select id="imgSize">
+          <option value="letter">Letter</option>
+          <option value="a4">A4</option>
+          <option value="fit" data-i18n="fit"></option>
+        </select>
+      </label>
+    </div>
+    <div class="hint" id="editHint" data-i18n="editHint"></div>
+    <div class="status" id="editStatus"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ===== Compress ===== -->
+  <section class="panel" id="panel-compress">
+    <div class="drop" id="dropComp">
+      <span id="compName" data-i18n="dropComp"></span>
+      <input type="file" id="fileComp" accept="application/pdf" hidden>
+    </div>
+    <div class="bar">
+      <label class="inline"><span data-i18n="level"></span>
+        <select id="compLevel">
+          <option value="96,0.5" data-i18n="strong"></option>
+          <option value="120,0.65" selected data-i18n="balanced"></option>
+          <option value="150,0.8" data-i18n="light"></option>
+        </select>
+      </label>
+      <button class="btn primary" id="btnComp" disabled data-i18n="compress"></button>
+    </div>
+    <div class="hint" data-i18n="compHint"></div>
+    <div class="status" id="compStatus"></div>
+    <div id="compResult"></div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js"></script>
+<script type="module">
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+const { PDFDocument, degrees } = PDFLib;
+const $ = (id) => document.getElementById(id);
+
+// ---------- i18n (shared with the tools site via localStorage "usSmLang") ----------
+const T = {
+  en: {
+    back: "← All tools", title: "PDF Tools",
+    sub: "Everything runs in your browser. Files are never uploaded anywhere.",
+    tabEdit: "Merge · Split · Reorder · Images → PDF", tabComp: "Compress PDF",
+    dropEdit: '<b>Drop PDFs or images here</b> or click to choose<br><span class="hint">PDF, JPG, PNG, WEBP (HEIC works in Safari). Add as many as you want; all pages show below.</span>',
+    office: '<b>Word / Excel / PowerPoint files?</b> Convert them to PDF first with <a href="office-to-pdf.bat" download>office-to-pdf.bat</a> (Windows with Office installed): drag files or a folder onto the .bat, then add the PDFs here.',
+    saveAll: "Save as one PDF", saveSel: "Save selected pages", saveSelN: (n) => `Save selected pages (${n})`,
+    split: "Split: 1 PDF per page (.zip)", clear: "Clear all", fileName: "File name", imgSize: "Image page size", fit: "Fit to image",
+    editHint: "Drag pages to reorder · click a page to select it · ⟲ ⟳ rotate · ✕ remove",
+    dropComp: "<b>Drop one PDF here</b> or click to choose",
+    level: "Level", strong: "Strong (smallest file)", balanced: "Balanced", light: "Light (best quality)", compress: "Compress",
+    compHint: "Best for scanned documents and photo-heavy PDFs. Pages are re-rendered as images, so text in the result can't be selected or searched.",
+    skipped: (n) => `Skipped ${n} (not a PDF or image)`, skippedOffice: (l) => ` Skipped: ${l}`,
+    reading: (n) => `Reading ${n}`, readingPage: (n, i, c) => `Reading ${n}: page ${i} / ${c}`,
+    password: (n) => `${n} is password protected`, unreadable: (n) => `${n} could not be read`,
+    badImage: (n) => `${n}: this browser can't open that image type`,
+    working: "Working…", failed: (m) => `Failed: ${m}`, splitting: (i, c) => `Splitting ${i} / ${c}`,
+    choosePdf: "Please choose a PDF", compressing: (i, c) => `Compressing page ${i} / ${c}`,
+    smaller: (p) => `(${p}% smaller)`, notSmaller: "(not smaller; this PDF is already compact, keep the original or try Strong)",
+    download: (n) => `Download ${n}`, rotL: "Rotate left", rotR: "Rotate right", remove: "Remove",
+  },
+  ko: {
+    back: "← 전체 도구", title: "PDF 도구",
+    sub: "모든 처리는 브라우저 안에서 이루어지며 파일은 어디에도 업로드되지 않습니다.",
+    tabEdit: "합치기 · 나누기 · 순서 변경 · 사진 → PDF", tabComp: "PDF 압축",
+    dropEdit: '<b>PDF나 사진 파일을 여기에 끌어다 놓거나</b> 클릭해서 선택하세요<br><span class="hint">PDF, JPG, PNG, WEBP 지원 (HEIC는 Safari에서만). 여러 개를 넣으면 모든 페이지가 아래에 표시됩니다.</span>',
+    office: '<b>Word / Excel / PowerPoint 파일인가요?</b> 먼저 <a href="office-to-pdf.bat" download>office-to-pdf.bat</a>으로 PDF로 변환하세요 (Office가 설치된 Windows PC). 파일이나 폴더를 .bat 위에 끌어다 놓은 뒤, 만들어진 PDF를 여기에 넣으면 됩니다.',
+    saveAll: "PDF 하나로 저장", saveSel: "선택한 페이지만 저장", saveSelN: (n) => `선택한 페이지만 저장 (${n})`,
+    split: "나누기: 페이지별 PDF (.zip)", clear: "모두 지우기", fileName: "파일 이름", imgSize: "사진 페이지 크기", fit: "사진 크기에 맞춤",
+    editHint: "드래그해서 순서 변경 · 클릭해서 페이지 선택 · ⟲ ⟳ 회전 · ✕ 삭제",
+    dropComp: "<b>PDF 파일 하나를 여기에 끌어다 놓거나</b> 클릭해서 선택하세요",
+    level: "압축 강도", strong: "강하게 (용량 최소)", balanced: "보통", light: "약하게 (화질 우선)", compress: "압축하기",
+    compHint: "스캔 문서나 사진이 많은 PDF에 효과적입니다. 페이지를 이미지로 다시 만들기 때문에 결과물의 글자는 선택하거나 검색할 수 없습니다.",
+    skipped: (n) => `${n} 건너뜀 (PDF나 사진이 아님)`, skippedOffice: (l) => ` 건너뛴 파일: ${l}`,
+    reading: (n) => `${n} 읽는 중`, readingPage: (n, i, c) => `${n} 읽는 중: ${i} / ${c} 페이지`,
+    password: (n) => `${n} 파일은 비밀번호가 걸려 있습니다`, unreadable: (n) => `${n} 파일을 읽을 수 없습니다`,
+    badImage: (n) => `${n}: 이 브라우저에서 열 수 없는 사진 형식입니다`,
+    working: "처리 중…", failed: (m) => `실패: ${m}`, splitting: (i, c) => `나누는 중 ${i} / ${c}`,
+    choosePdf: "PDF 파일을 선택하세요", compressing: (i, c) => `압축 중: ${i} / ${c} 페이지`,
+    smaller: (p) => `(${p}% 줄어듦)`, notSmaller: "(용량이 줄지 않았습니다. 이미 작은 PDF이니 원본을 쓰거나 '강하게'를 시도해 보세요)",
+    download: (n) => `${n} 다운로드`, rotL: "왼쪽으로 회전", rotR: "오른쪽으로 회전", remove: "삭제",
+  },
+};
+let lang = "";
+try { lang = localStorage.getItem("usSmLang") || ""; } catch (e) {}
+if (!T[lang]) lang = /^ko/i.test(navigator.language || "") ? "ko" : "en";
+const t = (k, ...a) => { const v = T[lang][k] ?? T.en[k]; return typeof v === "function" ? v(...a) : v; };
+let compLabel = null, pagesReady = false;
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    if (el.id === "compName" && compLabel) return;
+    el.innerHTML = t(el.dataset.i18n);
+  });
+  document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  if (pagesReady) render();
+}
+document.querySelectorAll(".lang button").forEach((b) => b.onclick = () => {
+  lang = b.dataset.lang;
+  try { localStorage.setItem("usSmLang", lang); } catch (e) {}
+  applyLang();
+});
+applyLang();
+
+// ---------- common ----------
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.style.display = "block";
+  clearTimeout(toast._t); toast._t = setTimeout(() => (el.style.display = "none"), 4000);
+}
+function download(bytes, name, type = "application/pdf") {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.round(n / 1024) + " KB";
+const isPdf = (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+const isImg = (f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(f.name);
+const norm = (d) => ((d % 360) + 360) % 360;
+const canvasBytes = (c, q) => new Promise((res) => c.toBlob(async (b) => res(new Uint8Array(await b.arrayBuffer())), "image/jpeg", q));
+
+function setupDrop(zone, input, onFiles) {
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => { onFiles([...input.files]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); zone.classList.add("over"); } });
+  zone.addEventListener("dragleave", () => zone.classList.remove("over"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("over"); onFiles([...e.dataTransfer.files]); });
+}
+
+async function openPdfjs(bytes, name) {
+  try { return await pdfjsLib.getDocument({ data: bytes.slice() }).promise; }
+  catch (e) {
+    if (e.name === "PasswordException") throw new Error(t("password", name));
+    throw new Error(t("unreadable", name));
+  }
+}
+
+// tabs
+document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === "panel-" + b.dataset.tab));
+}));
+
+// ---------- Edit: state ----------
+const sources = new Map(); // id -> {kind, name, bytes | jpg,w,h, lib}
+let pages = [];            // {uid, src, index, rot, thumb, label}
+const selected = new Set();
+let seq = 0;
+
+setupDrop($("dropEdit"), $("fileEdit"), addFiles);
+
+const isOffice = (f) => /\.(docx?|docm|rtf|odt|xlsx?|xlsm|pptx?|pptm)$/i.test(f.name);
+async function addFiles(files) {
+  const office = [];
+  for (const f of files) {
+    try {
+      if (isPdf(f)) await addPdf(f);
+      else if (isImg(f)) await addImage(f);
+      else if (isOffice(f)) office.push(f.name);
+      else toast(t("skipped", f.name));
+    } catch (e) { toast(e.message); }
+  }
+  if (office.length) {
+    $("officeNote").classList.add("alert");
+    $("officeSkipped").textContent = t("skippedOffice", office.join(", "));
+  }
+  $("editStatus").textContent = "";
+  render();
+}
+
+async function addPdf(f) {
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const pdf = await openPdfjs(bytes, f.name);
+  const id = ++seq;
+  sources.set(id, { kind: "pdf", name: f.name, bytes, lib: null });
+  for (let i = 1; i <= pdf.numPages; i++) {
+    $("editStatus").textContent = t("readingPage", f.name, i, pdf.numPages);
+    const page = await pdf.getPage(i);
+    pages.push({ uid: ++seq, src: id, index: i - 1, rot: 0, thumb: await thumbOf(page), label: `${f.name} · p${i}` });
+    if (i % 6 === 0) render();
+  }
+  pdf.destroy();
+}
+
+async function thumbOf(page) {
+  const v1 = page.getViewport({ scale: 1 });
+  const vp = page.getViewport({ scale: 220 / Math.max(v1.width, v1.height) });
+  const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c.toDataURL("image/jpeg", 0.75);
+}
+
+async function addImage(f) {
+  $("editStatus").textContent = t("reading", f.name);
+  const url = URL.createObjectURL(f);
+  const img = new Image(); img.src = url;
+  try { await img.decode(); } catch { URL.revokeObjectURL(url); throw new Error(t("badImage", f.name)); }
+  const MAX = 2800; // keep output size sane
+  const s = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+  const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(url);
+  const jpg = await canvasBytes(c, 0.9);
+  const tc = document.createElement("canvas"); const ts = 220 / Math.max(c.width, c.height);
+  tc.width = c.width * ts; tc.height = c.height * ts; tc.getContext("2d").drawImage(c, 0, 0, tc.width, tc.height);
+  const id = ++seq;
+  sources.set(id, { kind: "image", name: f.name, jpg, w: c.width, h: c.height });
+  pages.push({ uid: ++seq, src: id, index: 0, rot: 0, thumb: tc.toDataURL("image/jpeg", 0.75), label: f.name });
+}
+
+// ---------- Edit: grid ----------
+let dragUid = null;
+function render() {
+  const g = $("grid"); g.innerHTML = "";
+  pages.forEach((p, i) => {
+    const el = document.createElement("div");
+    el.className = "pg" + (selected.has(p.uid) ? " sel" : "");
+    el.draggable = true; el.dataset.uid = p.uid;
+    el.innerHTML = `<span class="num">${i + 1}</span>
+      <div class="thumb"><img src="${p.thumb}" class="r${norm(p.rot)}" style="transform:rotate(${p.rot}deg)"></div>
+      <div class="meta" title="${p.label.replace(/"/g, "&quot;")}"></div>
+      <div class="acts"><button data-a="l" title="${t("rotL")}">⟲</button><button data-a="r" title="${t("rotR")}">⟳</button><button data-a="x" class="del" title="${t("remove")}">✕</button></div>`;
+    el.querySelector(".meta").textContent = p.label;
+    el.addEventListener("click", (e) => {
+      const a = e.target.dataset?.a;
+      if (a === "l") p.rot -= 90;
+      else if (a === "r") p.rot += 90;
+      else if (a === "x") { pages = pages.filter((q) => q !== p); selected.delete(p.uid); }
+      else selected.has(p.uid) ? selected.delete(p.uid) : selected.add(p.uid);
+      render();
+    });
+    el.addEventListener("dragstart", (e) => { dragUid = p.uid; el.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", ""); });
+    el.addEventListener("dragend", () => { dragUid = null; render(); });
+    el.addEventListener("dragover", (e) => { if (dragUid == null) return; e.preventDefault(); el.classList.add("drop-before"); });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-before"));
+    el.addEventListener("drop", (e) => {
+      if (dragUid == null) return; e.preventDefault(); e.stopPropagation();
+      const from = pages.findIndex((q) => q.uid === dragUid);
+      const [moved] = pages.splice(from, 1);
+      const to = pages.findIndex((q) => q.uid === p.uid);
+      pages.splice(to, 0, moved);
+      dragUid = null; render();
+    });
+    g.appendChild(el);
+  });
+  // drop on empty grid area = move to end
+  const has = pages.length > 0;
+  $("btnSaveAll").disabled = !has; $("btnSplit").disabled = !has; $("btnClear").disabled = !has;
+  $("btnSaveSel").disabled = selected.size === 0;
+  $("btnSaveSel").textContent = selected.size ? t("saveSelN", selected.size) : t("saveSel");
+  $("editHint").style.display = has ? "" : "none";
+}
+$("grid").addEventListener("dragover", (e) => { if (dragUid != null) e.preventDefault(); });
+$("grid").addEventListener("drop", (e) => {
+  if (dragUid == null) return; e.preventDefault();
+  const from = pages.findIndex((q) => q.uid === dragUid);
+  pages.push(...pages.splice(from, 1)); dragUid = null; render();
+});
+
+// ---------- Edit: build ----------
+async function build(list) {
+  const out = await PDFDocument.create();
+  const embedded = new Map();
+  const size = $("imgSize").value;
+  for (const pg of list) {
+    const s = sources.get(pg.src);
+    if (s.kind === "pdf") {
+      if (!s.lib) s.lib = await PDFDocument.load(s.bytes, { ignoreEncryption: true });
+      const [cp] = await out.copyPages(s.lib, [pg.index]);
+      cp.setRotation(degrees(norm(cp.getRotation().angle + pg.rot)));
+      out.addPage(cp);
+    } else {
+      let img = embedded.get(pg.src);
+      if (!img) { img = await out.embedJpg(s.jpg); embedded.set(pg.src, img); }
+      let W, H, m;
+      if (size === "fit") { W = 612; H = 612 * s.h / s.w; m = 0; }
+      else {
+        [W, H] = size === "a4" ? [595.28, 841.89] : [612, 792];
+        if (s.w > s.h) [W, H] = [H, W]; // landscape photo -> landscape page
+        m = 24;
+      }
+      const page = out.addPage([W, H]);
+      const k = Math.min((W - 2 * m) / s.w, (H - 2 * m) / s.h);
+      const w = s.w * k, h = s.h * k;
+      page.drawImage(img, { x: (W - w) / 2, y: (H - h) / 2, width: w, height: h });
+      if (norm(pg.rot)) page.setRotation(degrees(norm(pg.rot)));
+    }
+  }
+  return out.save();
+}
+const baseName = () => ($("outName").value.trim() || "merged").replace(/\.pdf$/i, "").replace(/[\\/:*?"<>|]/g, "_");
+
+async function run(btn, fn) {
+  const label = btn.textContent; btn.disabled = true; btn.textContent = t("working");
+  try { await fn(); } catch (e) { console.error(e); toast(t("failed", e.message)); }
+  btn.textContent = label; render();
+}
+$("btnSaveAll").addEventListener("click", (e) => run(e.target, async () => download(await build(pages), baseName() + ".pdf")));
+$("btnSaveSel").addEventListener("click", (e) => run(e.target, async () =>
+  download(await build(pages.filter((p) => selected.has(p.uid))), baseName() + "-selected.pdf")));
+$("btnSplit").addEventListener("click", (e) => run(e.target, async () => {
+  const zip = new JSZip(); const pad = String(pages.length).length;
+  for (let i = 0; i < pages.length; i++) {
+    $("editStatus").textContent = t("splitting", i + 1, pages.length);
+    zip.file(`${baseName()}-p${String(i + 1).padStart(pad, "0")}.pdf`, await build([pages[i]]));
+  }
+  $("editStatus").textContent = "";
+  download(await zip.generateAsync({ type: "uint8array" }), baseName() + "-pages.zip", "application/zip");
+}));
+$("btnClear").addEventListener("click", () => { pages = []; selected.clear(); sources.clear(); render(); });
+
+// ---------- Compress ----------
+let compFile = null;
+setupDrop($("dropComp"), $("fileComp"), (files) => {
+  const f = files.find(isPdf);
+  if (!f) return toast(t("choosePdf"));
+  compFile = f; $("btnComp").disabled = false;
+  compLabel = `${f.name} (${kb(f.size)})`; $("compName").textContent = compLabel;
+  $("compResult").innerHTML = "";
+});
+$("btnComp").addEventListener("click", async () => {
+  const btn = $("btnComp"); btn.disabled = true;
+  try {
+    const [dpi, q] = $("compLevel").value.split(",").map(Number);
+    const bytes = new Uint8Array(await compFile.arrayBuffer());
+    const pdf = await openPdfjs(bytes, compFile.name);
+    const out = await PDFDocument.create();
+    for (let i = 1; i <= pdf.numPages; i++) {
+      $("compStatus").textContent = t("compressing", i, pdf.numPages);
+      const page = await pdf.getPage(i);
+      const v1 = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: dpi / 72 });
+      const c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+      const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const img = await out.embedJpg(await canvasBytes(c, q));
+      c.width = c.height = 0;
+      out.addPage([v1.width, v1.height]).drawImage(img, { x: 0, y: 0, width: v1.width, height: v1.height });
+      page.cleanup();
+    }
+    pdf.destroy();
+    const res = await out.save();
+    const name = compFile.name.replace(/\.pdf$/i, "") + "-compressed.pdf";
+    const pct = Math.round((1 - res.length / bytes.length) * 100);
+    const url = URL.createObjectURL(new Blob([res], { type: "application/pdf" }));
+    $("compResult").innerHTML = `<div class="result">${kb(bytes.length)} → <b>${kb(res.length)}</b>
+      ${pct > 0 ? t("smaller", pct) : `<span class="warn">${t("notSmaller")}</span>`}
+      <br><br><a href="${url}" download="${name}">${t("download", name)}</a></div>`;
+  } catch (e) { console.error(e); toast(t("failed", e.message)); }
+  $("compStatus").textContent = ""; btn.disabled = false;
+});
+
+pagesReady = true;
+render();
+</script>
+</body>
+</html>
