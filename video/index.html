@@ -43,7 +43,6 @@
   .result a { color:var(--accent); font-weight:600; }
   .warn { color:#b45309; }
   .hint { font-size:13px; color:var(--muted); line-height:1.5; }
-  .unsupported { border:1px solid #f59e0b; background:#fffbeb; color:#92400e; border-radius:10px; padding:12px 16px; font-size:14px; margin-bottom:14px; display:none; }
   video { width:100%; max-height:360px; margin-top:10px; border-radius:8px; background:#000; }
 </style>
 </head>
@@ -58,11 +57,9 @@
   <h1 data-i18n="title"></h1>
   <p class="sub" data-i18n="sub"></p>
 
-  <div class="unsupported" id="unsupported" data-i18n="unsupported"></div>
-
   <div class="drop" id="drop">
     <span data-i18n="drop"></span>
-    <input type="file" id="file" accept="video/*,.mov,.mp4,.m4v,.webm,.mkv" hidden>
+    <input type="file" id="file" accept="video/*,.mov,.mp4,.m4v,.webm,.mkv,.avi" hidden>
   </div>
 
   <div class="info" id="info">
@@ -130,8 +127,7 @@ const T = {
   en: {
     back: "← All tools", title: "Compress Video",
     sub: "Shrink .mov / .mp4 videos to a smaller MP4 so you can email or message them. Everything runs in your browser; files are never uploaded.",
-    unsupported: "<b>This browser can't compress video.</b> Please open this page in the latest Chrome or Edge (Safari 17+ also works).",
-    drop: '<b>Drop a video here</b> or click to choose<br><span class="hint">MOV, MP4, M4V, WEBM. iPhone videos work.</span>',
+    drop: '<b>Drop a video here</b> or click to choose<br><span class="hint">MOV, MP4, M4V, AVI, WEBM, MKV. iPhone videos work.</span>',
     mode: "Mode", modeQuality: "By quality", modeSize: "Fit a file size",
     quality: "Quality", qHigh: "High (bigger file)", qMedium: "Medium (recommended)", qLow: "Low (smallest)",
     target: "Max size", email25: "25 MB (email)",
@@ -152,12 +148,13 @@ const T = {
     estSize: (mb) => `Estimated: ~${mb}`,
     hint: "Tips: For email, use “Fit a file size” with 25 MB. Phone videos are often 4K/60fps; 1080p at 30 fps usually cuts the size by 70–90% with little visible difference. Long or 4K videos can take a few minutes; keep this tab open.",
     min: "min", sec: "sec",
+    engineDl: (a, b) => `Downloading the converter (first time only)… ${a} / ${b}`,
+    slowMode: "Compatibility mode: this format is converted on the CPU, so it is slower than usual (a few minutes for long videos).",
   },
   ko: {
     back: "← 전체 도구", title: "동영상 압축",
     sub: ".mov / .mp4 동영상을 작은 MP4로 줄여서 이메일이나 메신저로 보낼 수 있게 합니다. 모든 처리는 브라우저 안에서 이루어지며 파일은 어디에도 업로드되지 않습니다.",
-    unsupported: "<b>이 브라우저에서는 동영상 압축이 안 됩니다.</b> 최신 Chrome 또는 Edge에서 열어주세요 (Safari 17 이상도 가능).",
-    drop: '<b>동영상을 여기에 끌어다 놓거나</b> 클릭해서 선택<br><span class="hint">MOV, MP4, M4V, WEBM. 아이폰 동영상도 됩니다.</span>',
+    drop: '<b>동영상을 여기에 끌어다 놓거나</b> 클릭해서 선택<br><span class="hint">MOV, MP4, M4V, AVI, WEBM, MKV. 아이폰 동영상도 됩니다.</span>',
     mode: "방식", modeQuality: "화질 기준", modeSize: "용량 맞추기",
     quality: "화질", qHigh: "높음 (용량 큼)", qMedium: "보통 (추천)", qLow: "낮음 (가장 작게)",
     target: "최대 용량", email25: "25 MB (이메일)",
@@ -178,6 +175,8 @@ const T = {
     estSize: (mb) => `예상: 약 ${mb}`,
     hint: "팁: 이메일로 보낼 때는 “용량 맞추기”에서 25 MB를 고르세요. 휴대폰 동영상은 보통 4K/60fps라서 1080p·30fps로만 바꿔도 화질 차이는 거의 없이 용량이 70~90% 줄어듭니다. 길거나 4K인 영상은 몇 분 걸릴 수 있으니 이 탭을 열어두세요.",
     min: "분", sec: "초",
+    engineDl: (a, b) => `변환 엔진 다운로드 중 (처음 한 번만)… ${a} / ${b}`,
+    slowMode: "호환 모드: 이 형식은 CPU로 변환하기 때문에 평소보다 느립니다 (긴 영상은 몇 분 걸림).",
   },
 };
 let lang = "";
@@ -210,12 +209,75 @@ const AUDIO_BPS = 128000;
 const BPP = { high: 0.11, medium: 0.07, low: 0.04 };
 const QUALITY = { high: QUALITY_HIGH, medium: QUALITY_MEDIUM, low: QUALITY_LOW };
 
-const supported = typeof VideoEncoder !== "undefined" && typeof VideoDecoder !== "undefined";
-if (!supported) $("unsupported").style.display = "block";
+const webCodecs = typeof VideoEncoder !== "undefined" && typeof VideoDecoder !== "undefined";
 
 // ---------- state ----------
-let src = null;          // { file, input, video, audio, duration, w, h, fps, codec }
+// src: { engine: "webcodecs" | "ffmpeg", file, duration, w, h, fps, codec, audio, input?, video? }
+let src = null;
 let conv = null, lastResult = null, lastUrl = null;
+
+// ---------- ffmpeg.wasm engine (AVI and anything the browser can't decode natively) ----------
+// Slower (CPU only), but reads almost any format. Core (~32 MB) is downloaded once, on first use.
+const FF_CORE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/";
+const FF_WASM_BYTES = 32232419;
+const CRF = { high: 23, medium: 27, low: 31 };
+let ff = null, ffUrls = null, ffOnLog = null;
+
+async function blobUrl(url, type, onBytes) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const reader = r.body.getReader(), chunks = [];
+  let n = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; onBytes && onBytes(n); }
+  return URL.createObjectURL(new Blob(chunks, { type }));
+}
+async function getFF() {
+  if (ff) return ff;
+  if (!ffUrls) {
+    const show = (n) => status(t("engineDl", fmtSize(n), fmtSize(FF_WASM_BYTES)));
+    show(0);
+    const [coreURL, wasmURL] = await Promise.all([
+      blobUrl(FF_CORE + "ffmpeg-core.js", "text/javascript"),
+      blobUrl(FF_CORE + "ffmpeg-core.wasm", "application/wasm", show),
+    ]);
+    ffUrls = { coreURL, wasmURL };
+  }
+  const { FFmpeg } = await import("./ffmpeg/index.js");
+  const f = new FFmpeg();
+  f.on("log", ({ message }) => { if (ffOnLog) ffOnLog(message); });
+  await f.load(ffUrls);
+  try { await f.createDir("/in"); } catch (e) {}
+  ff = f;
+  return f;
+}
+async function withMounted(file, fn) {
+  const f = await getFF();
+  await f.mount("WORKERFS", { files: [file] }, "/in");
+  try { return await fn(f, "/in/" + file.name); }
+  finally { try { await f.unmount("/in"); } catch (e) {} }
+}
+async function probeFF(file) {
+  const logs = [];
+  await withMounted(file, async (f, path) => {
+    ffOnLog = (m) => logs.push(m);
+    try { await f.exec(["-hide_banner", "-i", path]); } finally { ffOnLog = null; }
+  });
+  const log = logs.join("\n");
+  const vLine = log.split("\n").find((l) => /Stream #.*Video:/.test(l));
+  if (!vLine) return null;
+  const d = log.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+  const wh = vLine.match(/,\s*(\d{2,5})x(\d{2,5})/);
+  const fps = vLine.match(/([\d.]+)\s*fps/) || vLine.match(/([\d.]+)\s*tbr/);
+  const rot = log.match(/rotation of (-?[\d.]+) degrees/);
+  let w = wh ? +wh[1] : 0, h = wh ? +wh[2] : 0;
+  if (rot && Math.abs(Math.round(+rot[1])) % 180 === 90) [w, h] = [h, w];
+  return {
+    duration: d ? +d[1] * 3600 + +d[2] * 60 + +d[3] : 0,
+    w, h, fps: fps ? +fps[1] : 0,
+    codec: (vLine.match(/Video:\s*(\w+)/) || [])[1] || "",
+    audio: /Stream #.*Audio:/.test(log),
+  };
+}
 
 // ---------- file picking ----------
 const drop = $("drop"), fileIn = $("file");
@@ -225,24 +287,43 @@ drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); };
 fileIn.onchange = () => { if (fileIn.files[0]) load(fileIn.files[0]); fileIn.value = ""; };
 
+// Fast path: the browser's own decoder/encoder (WebCodecs). Returns null if it can't handle the file.
+async function probeWebCodecs(file) {
+  if (!webCodecs || /\.avi$/i.test(file.name)) return null;
+  try {
+    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    const video = await input.getPrimaryVideoTrack();
+    if (!video || !(await video.canDecode())) return null;
+    if (!(await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"]))) return null;
+    const audio = await input.getPrimaryAudioTrack();
+    const duration = await input.computeDuration();
+    let fps = 0;
+    try { fps = (await video.computePacketStats(120)).averagePacketRate; } catch (e) {}
+    return { engine: "webcodecs", input, video, audio, duration, w: video.displayWidth, h: video.displayHeight, fps, codec: video.codec || "" };
+  } catch (e) {
+    console.warn("WebCodecs path unavailable:", e);
+    return null;
+  }
+}
+
 async function load(file) {
   if (conv) return;
   src = null; clearResult(); $("go").disabled = true; $("info").style.display = "none";
   status(t("reading"));
   try {
-    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
-    const video = await input.getPrimaryVideoTrack();
-    if (!video) { status(t("noVideo"), true); return; }
-    const audio = await input.getPrimaryAudioTrack();
-    const duration = await input.computeDuration();
-    let fps = 0;
-    try { fps = (await video.computePacketStats(120)).averagePacketRate; } catch (e) {}
-    src = { file, input, video, audio, duration, w: video.displayWidth, h: video.displayHeight, fps, codec: video.codec };
-    $("fps30").checked = fps > 35;
-    $("fps30").disabled = fps > 0 && fps <= 31;
+    let info = await probeWebCodecs(file);
+    if (!info) {
+      const p = await probeFF(file);
+      if (!p) { status(t("noVideo"), true); return; }
+      if (!p.duration || !p.w) { status(t("cantRead"), true); return; }
+      info = { engine: "ffmpeg", ...p };
+    }
+    src = { file, ...info };
+    $("fps30").checked = src.fps > 35;
+    $("fps30").disabled = src.fps > 0 && src.fps <= 31;
     showInfo();
     status("");
-    $("go").disabled = !supported;
+    $("go").disabled = false;
     updateEstimate();
   } catch (e) {
     console.error(e);
@@ -257,6 +338,11 @@ function showInfo() {
   if (src.fps) parts.push(Math.round(src.fps) + " fps");
   if (src.codec) parts.push(src.codec.toUpperCase());
   $("infoMeta").textContent = parts.join(" · ");
+  if (src.engine === "ffmpeg") {
+    const n = document.createElement("div");
+    n.className = "warn"; n.textContent = t("slowMode");
+    $("infoMeta").appendChild(n);
+  }
 }
 
 // ---------- options ----------
@@ -277,7 +363,8 @@ function outDims() {
   const k = target / short;
   return { w: even(src.w * k), h: even(src.h * k), scaled: true };
 }
-const outFps = () => ($("fps30").checked && src.fps > 31) ? 30 : (src.fps || 30);
+const limitFps = () => $("fps30").checked && src.fps > 31;
+const outFps = () => limitFps() ? 30 : (src.fps || 30);
 
 function targetVideoBps() {
   const bytes = Math.max(1, +$("targetMb").value || 25) * 1e6;
@@ -304,60 +391,109 @@ function updateEstimate() {
 $("go").onclick = run;
 $("cancel").onclick = () => { if (conv) conv.cancel(); };
 
+function progressReporter() {
+  const started = performance.now();
+  return (p) => {
+    p = Math.max(0, Math.min(1, p));
+    const pct = Math.min(99, Math.floor(p * 100));
+    $("prog").firstElementChild.style.width = pct + "%";
+    const el = (performance.now() - started) / 1000;
+    const eta = p > 0.03 && el > 3 ? fmtDur(el / p - el) : "";
+    status(t("working", pct, eta));
+  };
+}
+
+async function runWebCodecs(opts, onProgress) {
+  const { w, h, scaled, sizeMode } = opts;
+  const vBitrate = sizeMode ? Math.max(100000, targetVideoBps()) : QUALITY[$("quality").value];
+  const codec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width: w, height: h });
+  if (!codec) throw new Error(t("noEncoder"));
+  const aacOk = src.audio ? await canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: 48000, bitrate: AUDIO_BPS }) : false;
+
+  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const videoOpts = { codec, bitrate: vBitrate, forceTranscode: true };
+  if (scaled) { videoOpts.width = w; videoOpts.height = h; videoOpts.fit = "contain"; }
+  if (limitFps()) videoOpts.frameRate = 30;
+  const audioOpts = aacOk ? { codec: "aac", bitrate: AUDIO_BPS } : {};
+
+  const c = await Conversion.init({ input: src.input, output, video: videoOpts, audio: audioOpts, tracks: "primary", showWarnings: false });
+  if (!c.isValid) {
+    const reasons = c.discardedTracks.map((d) => `${d.track.type}: ${d.reason}`).join(", ");
+    throw new Error(reasons || "invalid conversion");
+  }
+  const audioLost = !!src.audio && c.discardedTracks.some((d) => d.track.type === "audio");
+  let canceled = false;
+  conv = { cancel: () => { canceled = true; c.cancel(); } };
+  c.onProgress = (p) => onProgress(p);
+  try { await c.execute(); }
+  catch (e) { if (canceled || e instanceof ConversionCanceledError) throw new Error("__canceled"); throw e; }
+  return { data: output.target.buffer, audioLost };
+}
+
+async function runFFmpeg(opts, onProgress) {
+  const { w, h, sizeMode } = opts;
+  const vf = [];
+  if (w !== src.w || h !== src.h) vf.push(`scale=${w}:${h}`);
+  if (limitFps()) vf.push("fps=30");
+  const rate = sizeMode
+    ? (() => { const b = Math.max(100000, targetVideoBps()); return ["-b:v", String(b), "-maxrate", String(Math.round(b * 1.2)), "-bufsize", String(b * 2)]; })()
+    : ["-crf", String(CRF[$("quality").value])];
+  let canceled = false;
+  conv = { cancel: () => { canceled = true; if (ff) { ff.terminate(); ff = null; } } };
+  return await withMounted(src.file, async (f, path) => {
+    ffOnLog = (m) => {
+      const tm = m.match(/time=\s*(\d+):(\d+):([\d.]+)/);
+      if (tm) onProgress((+tm[1] * 3600 + +tm[2] * 60 + +tm[3]) / src.duration);
+    };
+    let ret;
+    try {
+      ret = await f.exec([
+        "-hide_banner", "-i", path,
+        "-map", "0:v:0", "-map", "0:a:0?",
+        ...(vf.length ? ["-vf", vf.join(",")] : []),
+        "-c:v", "libx264", "-preset", "veryfast", ...rate, "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+        "-movflags", "+faststart", "-y", "/out.mp4",
+      ]);
+    } catch (e) {
+      if (canceled) throw new Error("__canceled");
+      throw e;
+    } finally { ffOnLog = null; }
+    if (canceled) throw new Error("__canceled");
+    if (ret !== 0) throw new Error("ffmpeg exit code " + ret);
+    const data = await f.readFile("/out.mp4");
+    try { await f.deleteFile("/out.mp4"); } catch (e) {}
+    return { data, audioLost: false };
+  });
+}
+
 async function run() {
   if (!src || conv) return;
   clearResult();
   const { w, h, scaled } = outDims();
   const sizeMode = mode() === "size";
   const targetMb = Math.max(1, +$("targetMb").value || 25);
-  const quality = QUALITY[$("quality").value];
-  const vBitrate = sizeMode ? Math.max(100000, targetVideoBps()) : quality;
+  conv = { cancel() {} };   // busy marker until the engine replaces it
 
+  $("go").disabled = true; $("cancel").style.display = ""; $("prog").style.display = "block";
+  status(t("working", 0, ""));
   try {
-    if (!(await src.video.canDecode())) { status(t("cantDecode"), true); return; }
-    const codec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width: w, height: h });
-    if (!codec) { status(t("noEncoder"), true); return; }
-    const aacOk = src.audio ? await canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: 48000, bitrate: AUDIO_BPS }) : false;
-
-    const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-    const videoOpts = { codec, bitrate: vBitrate, forceTranscode: true };
-    if (scaled) { videoOpts.width = w; videoOpts.height = h; videoOpts.fit = "contain"; }
-    if ($("fps30").checked && src.fps > 31) videoOpts.frameRate = 30;
-    const audioOpts = aacOk ? { codec: "aac", bitrate: AUDIO_BPS } : {};
-
-    conv = await Conversion.init({ input: src.input, output, video: videoOpts, audio: audioOpts, tracks: "primary", showWarnings: false });
-    if (!conv.isValid) {
-      const reasons = conv.discardedTracks.map((d) => `${d.track.type}: ${d.reason}`).join(", ");
-      throw new Error(reasons || "invalid conversion");
-    }
-    const audioLost = !!src.audio && conv.discardedTracks.some((d) => d.track.type === "audio");
-
-    $("go").disabled = true; $("cancel").style.display = ""; $("prog").style.display = "block";
-    const started = performance.now();
-    conv.onProgress = (p) => {
-      const pct = Math.min(99, Math.floor(p * 100));
-      $("prog").firstElementChild.style.width = pct + "%";
-      const el = (performance.now() - started) / 1000;
-      const eta = p > 0.03 && el > 3 ? fmtDur(el / p - el) : "";
-      status(t("working", pct, eta));
-    };
-    status(t("working", 0, ""));
-    await conv.execute();
-
-    const buf = output.target.buffer;
+    const onProgress = progressReporter();
+    const opts = { w, h, scaled, sizeMode };
+    const { data, audioLost } = src.engine === "ffmpeg" ? await runFFmpeg(opts, onProgress) : await runWebCodecs(opts, onProgress);
     const base = src.file.name.replace(/\.[^.]+$/, "");
-    lastResult = { blob: new Blob([buf], { type: "video/mp4" }), name: `${base}_compressed.mp4`, before: src.file.size, sizeMode, targetMb, audioLost };
+    lastResult = { blob: new Blob([data], { type: "video/mp4" }), name: `${base}_compressed.mp4`, before: src.file.size, sizeMode, targetMb, audioLost };
     $("prog").firstElementChild.style.width = "100%";
     status(t("done"));
     showResult(lastResult);
   } catch (e) {
     console.error(e);
-    if (e instanceof ConversionCanceledError) status(t("canceled"), true);
+    if (e && e.message === "__canceled") status(t("canceled"), true);
     else status(t("failed", (e && e.message) || e), true);
     $("prog").style.display = "none";
   } finally {
     conv = null;
-    $("go").disabled = !src || !supported;
+    $("go").disabled = !src;
     $("cancel").style.display = "none";
   }
 }
