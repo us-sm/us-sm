@@ -24,6 +24,18 @@
     "tag": "PDF"
   },
   {
+    "path": "video/",
+    "name": {
+      "en": "Compress Video",
+      "ko": "동영상 압축"
+    },
+    "desc": {
+      "en": "Shrink .mov / .mp4 videos to a small MP4 for email or messaging. Pick a quality or a max size (e.g. 25 MB).",
+      "ko": ".mov / .mp4 동영상을 이메일·메신저용 작은 MP4로 압축. 화질 선택 또는 최대 용량(예: 25 MB) 지정."
+    },
+    "tag": "Video"
+  },
+  {
     "path": "eml/",
     "name": {
       "en": "Email Safety Check",

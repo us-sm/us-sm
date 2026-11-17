@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compress Video</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e5e7eb; --accent:#2563eb; --danger:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .back { font-size:13.5px; color:var(--muted); text-decoration:none; }
+  .lang { display:flex; gap:4px; }
+  .lang button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12.5px; cursor:pointer; }
+  .lang button.on { background:var(--text); color:#fff; border-color:var(--text); }
+  .drop { border:2px dashed #cbd5e1; border-radius:12px; background:var(--card); padding:28px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; }
+  .drop.over { border-color:var(--accent); background:#eff6ff; color:var(--accent); }
+  .drop b { color:var(--text); }
+  .info { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin-top:14px; font-size:14px; display:none; }
+  .info .name { font-weight:600; word-break:break-all; }
+  .info .meta { color:var(--muted); margin-top:4px; }
+  .opts { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-top:14px; display:grid; grid-template-columns:110px 1fr; gap:12px 14px; align-items:center; font-size:14px; }
+  .opts > span { color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  select, input[type=number] { font:inherit; font-size:14px; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; }
+  input[type=number] { width:90px; }
+  label.radio { display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .chip { font:inherit; font-size:12.5px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; cursor:pointer; color:var(--muted); }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
+  button.btn { font:inherit; font-size:14px; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); cursor:pointer; }
+  button.btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.btn:disabled { opacity:.45; cursor:not-allowed; }
+  .est { font-size:13px; color:var(--muted); }
+  .prog { height:8px; background:#e5e7eb; border-radius:999px; overflow:hidden; margin-top:6px; display:none; }
+  .prog > div { height:100%; width:0; background:var(--accent); transition:width .2s; }
+  .status { font-size:14px; color:var(--accent); min-height:20px; margin:8px 0; }
+  .status.err { color:var(--danger); }
+  .result { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-top:14px; font-size:14px; line-height:1.6; }
+  .result a { color:var(--accent); font-weight:600; }
+  .warn { color:#b45309; }
+  .hint { font-size:13px; color:var(--muted); line-height:1.5; }
+  .unsupported { border:1px solid #f59e0b; background:#fffbeb; color:#92400e; border-radius:10px; padding:12px 16px; font-size:14px; margin-bottom:14px; display:none; }
+  video { width:100%; max-height:360px; margin-top:10px; border-radius:8px; background:#000; }
+</style>
+</head>
+<body>
+<main>
+  <div class="topbar">
+    <a class="back" href="../" data-i18n="back"></a>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en">EN</button><button data-lang="ko">한국어</button>
+    </div>
+  </div>
+  <h1 data-i18n="title"></h1>
+  <p class="sub" data-i18n="sub"></p>
+
+  <div class="unsupported" id="unsupported" data-i18n="unsupported"></div>
+
+  <div class="drop" id="drop">
+    <span data-i18n="drop"></span>
+    <input type="file" id="file" accept="video/*,.mov,.mp4,.m4v,.webm,.mkv" hidden>
+  </div>
+
+  <div class="info" id="info">
+    <div class="name" id="infoName"></div>
+    <div class="meta" id="infoMeta"></div>
+  </div>
+
+  <div class="opts">
+    <span data-i18n="mode"></span>
+    <div class="row">
+      <label class="radio"><input type="radio" name="mode" value="quality" checked> <span data-i18n="modeQuality"></span></label>
+      <label class="radio"><input type="radio" name="mode" value="size"> <span data-i18n="modeSize"></span></label>
+    </div>
+
+    <span data-i18n="quality" id="qualityLbl"></span>
+    <div class="row" id="qualityRow">
+      <select id="quality">
+        <option value="high" data-i18n="qHigh"></option>
+        <option value="medium" selected data-i18n="qMedium"></option>
+        <option value="low" data-i18n="qLow"></option>
+      </select>
+    </div>
+
+    <span data-i18n="target" id="targetLbl" style="display:none"></span>
+    <div class="row" id="targetRow" style="display:none">
+      <input type="number" id="targetMb" min="1" step="1" value="25"> MB
+      <button class="chip" data-mb="10">10 MB</button>
+      <button class="chip" data-mb="25" data-i18n="email25"></button>
+      <button class="chip" data-mb="100">100 MB</button>
+    </div>
+
+    <span data-i18n="res"></span>
+    <div class="row">
+      <select id="res">
+        <option value="0" data-i18n="resOrig"></option>
+        <option value="1080" selected>1080p</option>
+        <option value="720">720p</option>
+        <option value="480">480p</option>
+      </select>
+      <label class="radio"><input type="checkbox" id="fps30"> <span data-i18n="fps30"></span></label>
+    </div>
+  </div>
+
+  <div class="bar">
+    <button class="btn primary" id="go" disabled data-i18n="go"></button>
+    <button class="btn" id="cancel" style="display:none" data-i18n="cancel"></button>
+    <span class="est" id="est"></span>
+  </div>
+  <div class="prog" id="prog"><div></div></div>
+  <div class="status" id="status"></div>
+  <div id="result"></div>
+  <p class="hint" data-i18n="hint"></p>
+</main>
+
+<script type="module">
+import {
+  Input, Output, Conversion, BlobSource, BufferTarget, Mp4OutputFormat, ALL_FORMATS,
+  QUALITY_HIGH, QUALITY_MEDIUM, QUALITY_LOW, canEncodeAudio, getFirstEncodableVideoCodec, ConversionCanceledError,
+} from "https://cdn.jsdelivr.net/npm/mediabunny@1.66.0/dist/bundles/mediabunny.min.mjs";
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- i18n (shared with the tools site via localStorage "usSmLang") ----------
+const T = {
+  en: {
+    back: "← All tools", title: "Compress Video",
+    sub: "Shrink .mov / .mp4 videos to a smaller MP4 so you can email or message them. Everything runs in your browser; files are never uploaded.",
+    unsupported: "<b>This browser can't compress video.</b> Please open this page in the latest Chrome or Edge (Safari 17+ also works).",
+    drop: '<b>Drop a video here</b> or click to choose<br><span class="hint">MOV, MP4, M4V, WEBM. iPhone videos work.</span>',
+    mode: "Mode", modeQuality: "By quality", modeSize: "Fit a file size",
+    quality: "Quality", qHigh: "High (bigger file)", qMedium: "Medium (recommended)", qLow: "Low (smallest)",
+    target: "Max size", email25: "25 MB (email)",
+    res: "Resolution", resOrig: "Keep original", fps30: "Limit to 30 fps",
+    go: "Compress", cancel: "Cancel",
+    reading: "Reading video…", noVideo: "No video track found in this file.",
+    cantRead: "Could not read this file. It may be damaged or in an unsupported format.",
+    cantDecode: "This browser can't decode this video's format. Try the latest Chrome or Edge.",
+    noEncoder: "This browser has no video encoder available. Try the latest Chrome or Edge.",
+    working: (p, eta) => `Compressing… ${p}%${eta ? ` · about ${eta} left` : ""}`,
+    canceled: "Canceled.", failed: (m) => `Compression failed: ${m}`,
+    done: "Done!", download: "Download", before: "Original", after: "Compressed",
+    smaller: (p) => `${p}% smaller`,
+    bigger: "The result is not smaller than the original. Try a lower quality or resolution.",
+    overTarget: (mb) => `Slightly over ${mb} MB. Try a lower resolution or a smaller target.`,
+    tooSmall: "That target is very small for this video's length; quality will be poor. Consider 720p or 480p.",
+    noAudio: "Note: the audio track could not be kept in this browser.",
+    estSize: (mb) => `Estimated: ~${mb}`,
+    hint: "Tips: For email, use “Fit a file size” with 25 MB. Phone videos are often 4K/60fps; 1080p at 30 fps usually cuts the size by 70–90% with little visible difference. Long or 4K videos can take a few minutes; keep this tab open.",
+    min: "min", sec: "sec",
+  },
+  ko: {
+    back: "← 전체 도구", title: "동영상 압축",
+    sub: ".mov / .mp4 동영상을 작은 MP4로 줄여서 이메일이나 메신저로 보낼 수 있게 합니다. 모든 처리는 브라우저 안에서 이루어지며 파일은 어디에도 업로드되지 않습니다.",
+    unsupported: "<b>이 브라우저에서는 동영상 압축이 안 됩니다.</b> 최신 Chrome 또는 Edge에서 열어주세요 (Safari 17 이상도 가능).",
+    drop: '<b>동영상을 여기에 끌어다 놓거나</b> 클릭해서 선택<br><span class="hint">MOV, MP4, M4V, WEBM. 아이폰 동영상도 됩니다.</span>',
+    mode: "방식", modeQuality: "화질 기준", modeSize: "용량 맞추기",
+    quality: "화질", qHigh: "높음 (용량 큼)", qMedium: "보통 (추천)", qLow: "낮음 (가장 작게)",
+    target: "최대 용량", email25: "25 MB (이메일)",
+    res: "해상도", resOrig: "원본 유지", fps30: "30fps로 낮추기",
+    go: "압축하기", cancel: "취소",
+    reading: "동영상 읽는 중…", noVideo: "이 파일에서 영상 트랙을 찾을 수 없습니다.",
+    cantRead: "파일을 읽을 수 없습니다. 손상되었거나 지원하지 않는 형식일 수 있습니다.",
+    cantDecode: "이 브라우저는 이 동영상 형식을 디코딩할 수 없습니다. 최신 Chrome 또는 Edge를 사용해 보세요.",
+    noEncoder: "이 브라우저에는 사용할 수 있는 동영상 인코더가 없습니다. 최신 Chrome 또는 Edge를 사용해 보세요.",
+    working: (p, eta) => `압축 중… ${p}%${eta ? ` · 약 ${eta} 남음` : ""}`,
+    canceled: "취소되었습니다.", failed: (m) => `압축 실패: ${m}`,
+    done: "완료!", download: "다운로드", before: "원본", after: "압축 후",
+    smaller: (p) => `${p}% 감소`,
+    bigger: "결과가 원본보다 작지 않습니다. 화질이나 해상도를 낮춰서 다시 해보세요.",
+    overTarget: (mb) => `${mb} MB를 조금 넘었습니다. 해상도를 낮추거나 목표 용량을 줄여서 다시 해보세요.`,
+    tooSmall: "영상 길이에 비해 목표 용량이 너무 작아 화질이 많이 떨어집니다. 720p나 480p를 권장합니다.",
+    noAudio: "참고: 이 브라우저에서는 오디오 트랙을 유지하지 못했습니다.",
+    estSize: (mb) => `예상: 약 ${mb}`,
+    hint: "팁: 이메일로 보낼 때는 “용량 맞추기”에서 25 MB를 고르세요. 휴대폰 동영상은 보통 4K/60fps라서 1080p·30fps로만 바꿔도 화질 차이는 거의 없이 용량이 70~90% 줄어듭니다. 길거나 4K인 영상은 몇 분 걸릴 수 있으니 이 탭을 열어두세요.",
+    min: "분", sec: "초",
+  },
+};
+let lang = "";
+try { lang = localStorage.getItem("usSmLang") || ""; } catch (e) {}
+if (!T[lang]) lang = /^ko/i.test(navigator.language || "") ? "ko" : "en";
+const t = (k, ...a) => { const v = T[lang][k] ?? T.en[k]; return typeof v === "function" ? v(...a) : v; };
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.innerHTML = t(el.dataset.i18n); });
+  document.querySelectorAll(".lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+  if (src) showInfo();
+  updateEstimate();
+  if (lastResult) showResult(lastResult);
+}
+document.querySelectorAll(".lang button").forEach((b) => b.onclick = () => {
+  lang = b.dataset.lang;
+  try { localStorage.setItem("usSmLang", lang); } catch (e) {}
+  applyLang();
+});
+
+// ---------- helpers ----------
+const fmtSize = (b) => b >= 1e9 ? (b / 1e9).toFixed(2) + " GB" : b >= 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB";
+const fmtDur = (s) => { s = Math.round(s); const m = Math.floor(s / 60); return m ? `${m}${t("min")} ${s % 60}${t("sec")}` : `${s}${t("sec")}`; };
+const fmtClock = (s) => { s = Math.round(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; };
+const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+const status = (msg, err = false) => { $("status").textContent = msg || ""; $("status").classList.toggle("err", err); };
+const AUDIO_BPS = 128000;
+// Rough average bitrates (bits/s per pixel-per-second) for H.264 at each quality, used only for the estimate.
+const BPP = { high: 0.11, medium: 0.07, low: 0.04 };
+const QUALITY = { high: QUALITY_HIGH, medium: QUALITY_MEDIUM, low: QUALITY_LOW };
+
+const supported = typeof VideoEncoder !== "undefined" && typeof VideoDecoder !== "undefined";
+if (!supported) $("unsupported").style.display = "block";
+
+// ---------- state ----------
+let src = null;          // { file, input, video, audio, duration, w, h, fps, codec }
+let conv = null, lastResult = null, lastUrl = null;
+
+// ---------- file picking ----------
+const drop = $("drop"), fileIn = $("file");
+drop.onclick = () => fileIn.click();
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); };
+fileIn.onchange = () => { if (fileIn.files[0]) load(fileIn.files[0]); fileIn.value = ""; };
+
+async function load(file) {
+  if (conv) return;
+  src = null; clearResult(); $("go").disabled = true; $("info").style.display = "none";
+  status(t("reading"));
+  try {
+    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    const video = await input.getPrimaryVideoTrack();
+    if (!video) { status(t("noVideo"), true); return; }
+    const audio = await input.getPrimaryAudioTrack();
+    const duration = await input.computeDuration();
+    let fps = 0;
+    try { fps = (await video.computePacketStats(120)).averagePacketRate; } catch (e) {}
+    src = { file, input, video, audio, duration, w: video.displayWidth, h: video.displayHeight, fps, codec: video.codec };
+    $("fps30").checked = fps > 35;
+    $("fps30").disabled = fps > 0 && fps <= 31;
+    showInfo();
+    status("");
+    $("go").disabled = !supported;
+    updateEstimate();
+  } catch (e) {
+    console.error(e);
+    status(t("cantRead"), true);
+  }
+}
+
+function showInfo() {
+  $("info").style.display = "block";
+  $("infoName").textContent = src.file.name;
+  const parts = [fmtSize(src.file.size), fmtClock(src.duration), `${src.w}×${src.h}`];
+  if (src.fps) parts.push(Math.round(src.fps) + " fps");
+  if (src.codec) parts.push(src.codec.toUpperCase());
+  $("infoMeta").textContent = parts.join(" · ");
+}
+
+// ---------- options ----------
+const mode = () => document.querySelector('input[name="mode"]:checked').value;
+document.querySelectorAll('input[name="mode"]').forEach((r) => r.onchange = () => {
+  const size = mode() === "size";
+  $("qualityLbl").style.display = $("qualityRow").style.display = size ? "none" : "";
+  $("targetLbl").style.display = $("targetRow").style.display = size ? "" : "none";
+  updateEstimate();
+});
+document.querySelectorAll(".chip").forEach((c) => c.onclick = () => { $("targetMb").value = c.dataset.mb; updateEstimate(); });
+["quality", "res", "targetMb", "fps30"].forEach((id) => $(id).addEventListener("input", updateEstimate));
+
+function outDims() {
+  const target = +$("res").value;
+  const short = Math.min(src.w, src.h);
+  if (!target || short <= target) return { w: even(src.w), h: even(src.h), scaled: false };
+  const k = target / short;
+  return { w: even(src.w * k), h: even(src.h * k), scaled: true };
+}
+const outFps = () => ($("fps30").checked && src.fps > 31) ? 30 : (src.fps || 30);
+
+function targetVideoBps() {
+  const bytes = Math.max(1, +$("targetMb").value || 25) * 1e6;
+  const total = bytes * 8 * 0.92 / src.duration;   // keep ~8% headroom for container + encoder overshoot
+  return Math.round(total - (src.audio ? AUDIO_BPS : 0));
+}
+
+function updateEstimate() {
+  if (!src) { $("est").textContent = ""; return; }
+  if (mode() === "size") {
+    const { w, h } = outDims();
+    const bps = targetVideoBps();
+    const bpp = bps / (w * h * outFps());
+    $("est").innerHTML = bpp < 0.02 || bps < 200000 ? `<span class="warn">${t("tooSmall")}</span>` : "";
+  } else {
+    const { w, h } = outDims();
+    const vbps = BPP[$("quality").value] * w * h * outFps();
+    const bytes = (vbps + (src.audio ? AUDIO_BPS : 0)) * src.duration / 8;
+    $("est").textContent = t("estSize", fmtSize(Math.min(bytes, src.file.size)));
+  }
+}
+
+// ---------- compress ----------
+$("go").onclick = run;
+$("cancel").onclick = () => { if (conv) conv.cancel(); };
+
+async function run() {
+  if (!src || conv) return;
+  clearResult();
+  const { w, h, scaled } = outDims();
+  const sizeMode = mode() === "size";
+  const targetMb = Math.max(1, +$("targetMb").value || 25);
+  const quality = QUALITY[$("quality").value];
+  const vBitrate = sizeMode ? Math.max(100000, targetVideoBps()) : quality;
+
+  try {
+    if (!(await src.video.canDecode())) { status(t("cantDecode"), true); return; }
+    const codec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width: w, height: h });
+    if (!codec) { status(t("noEncoder"), true); return; }
+    const aacOk = src.audio ? await canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: 48000, bitrate: AUDIO_BPS }) : false;
+
+    const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+    const videoOpts = { codec, bitrate: vBitrate, forceTranscode: true };
+    if (scaled) { videoOpts.width = w; videoOpts.height = h; videoOpts.fit = "contain"; }
+    if ($("fps30").checked && src.fps > 31) videoOpts.frameRate = 30;
+    const audioOpts = aacOk ? { codec: "aac", bitrate: AUDIO_BPS } : {};
+
+    conv = await Conversion.init({ input: src.input, output, video: videoOpts, audio: audioOpts, tracks: "primary", showWarnings: false });
+    if (!conv.isValid) {
+      const reasons = conv.discardedTracks.map((d) => `${d.track.type}: ${d.reason}`).join(", ");
+      throw new Error(reasons || "invalid conversion");
+    }
+    const audioLost = !!src.audio && conv.discardedTracks.some((d) => d.track.type === "audio");
+
+    $("go").disabled = true; $("cancel").style.display = ""; $("prog").style.display = "block";
+    const started = performance.now();
+    conv.onProgress = (p) => {
+      const pct = Math.min(99, Math.floor(p * 100));
+      $("prog").firstElementChild.style.width = pct + "%";
+      const el = (performance.now() - started) / 1000;
+      const eta = p > 0.03 && el > 3 ? fmtDur(el / p - el) : "";
+      status(t("working", pct, eta));
+    };
+    status(t("working", 0, ""));
+    await conv.execute();
+
+    const buf = output.target.buffer;
+    const base = src.file.name.replace(/\.[^.]+$/, "");
+    lastResult = { blob: new Blob([buf], { type: "video/mp4" }), name: `${base}_compressed.mp4`, before: src.file.size, sizeMode, targetMb, audioLost };
+    $("prog").firstElementChild.style.width = "100%";
+    status(t("done"));
+    showResult(lastResult);
+  } catch (e) {
+    console.error(e);
+    if (e instanceof ConversionCanceledError) status(t("canceled"), true);
+    else status(t("failed", (e && e.message) || e), true);
+    $("prog").style.display = "none";
+  } finally {
+    conv = null;
+    $("go").disabled = !src || !supported;
+    $("cancel").style.display = "none";
+  }
+}
+
+function showResult(r) {
+  if (lastUrl) URL.revokeObjectURL(lastUrl);
+  lastUrl = URL.createObjectURL(r.blob);
+  const after = r.blob.size, pct = Math.round((1 - after / r.before) * 100);
+  const div = document.createElement("div");
+  div.className = "result";
+  let html = `${t("before")}: <b>${fmtSize(r.before)}</b> → ${t("after")}: <b>${fmtSize(after)}</b>`;
+  html += pct > 0 ? ` (${t("smaller", pct)})` : "";
+  html += `<br><a download></a>`;
+  if (pct <= 0) html += `<div class="warn">${t("bigger")}</div>`;
+  else if (r.sizeMode && after > r.targetMb * 1e6) html += `<div class="warn">${t("overTarget", r.targetMb)}</div>`;
+  if (r.audioLost) html += `<div class="warn">${t("noAudio")}</div>`;
+  div.innerHTML = html;
+  const a = div.querySelector("a");
+  a.href = lastUrl; a.download = r.name; a.textContent = `${t("download")} ${r.name}`;
+  const v = document.createElement("video");
+  v.controls = true; v.preload = "metadata"; v.src = lastUrl;
+  div.appendChild(v);
+  $("result").replaceChildren(div);
+}
+
+function clearResult() {
+  $("result").replaceChildren();
+  $("prog").style.display = "none";
+  $("prog").firstElementChild.style.width = "0";
+  lastResult = null;
+  if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+}
+
+applyLang();
+</script>
+</body>
+</html>
