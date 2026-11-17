@@ -42,6 +42,7 @@
   .result { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-top:14px; font-size:14px; line-height:1.6; }
   .result a { color:var(--accent); font-weight:600; }
   .warn { color:#b45309; }
+  .warn a, .hint a { color:var(--accent); font-weight:600; }
   .hint { font-size:13px; color:var(--muted); line-height:1.5; }
   video { width:100%; max-height:360px; margin-top:10px; border-radius:8px; background:#000; }
 </style>
@@ -146,10 +147,10 @@ const T = {
     tooSmall: "That target is very small for this video's length; quality will be poor. Consider 720p or 480p.",
     noAudio: "Note: the audio track could not be kept in this browser.",
     estSize: (mb) => `Estimated: ~${mb}`,
-    hint: "Tips: For email, use “Fit a file size” with 25 MB. Phone videos are often 4K/60fps; 1080p at 30 fps usually cuts the size by 70–90% with little visible difference. Long or 4K videos can take a few minutes; keep this tab open.",
+    hint: "Tips: For email, use “Fit a file size” with 25 MB. Phone videos are often 4K/60fps; 1080p at 30 fps usually cuts the size by 70–90% with little visible difference. Long or 4K videos can take a few minutes; keep this tab open.<br><b>Lots of videos, AVI, or very large files?</b> Use <a href="video-compress.bat" download>video-compress.bat</a> (Windows): drag videos or a folder onto it. It downloads ffmpeg once (~90 MB, no install) and is much faster.",
     min: "min", sec: "sec",
     engineDl: (a, b) => `Downloading the converter (first time only)… ${a} / ${b}`,
-    slowMode: "Compatibility mode: this format is converted on the CPU, so it is slower than usual (a few minutes for long videos).",
+    slowMode: 'Compatibility mode: this format is converted on the CPU in the browser, so it is slow. For long videos, <a href="video-compress.bat" download>video-compress.bat</a> (Windows) is much faster.',
   },
   ko: {
     back: "← 전체 도구", title: "동영상 압축",
@@ -173,10 +174,10 @@ const T = {
     tooSmall: "영상 길이에 비해 목표 용량이 너무 작아 화질이 많이 떨어집니다. 720p나 480p를 권장합니다.",
     noAudio: "참고: 이 브라우저에서는 오디오 트랙을 유지하지 못했습니다.",
     estSize: (mb) => `예상: 약 ${mb}`,
-    hint: "팁: 이메일로 보낼 때는 “용량 맞추기”에서 25 MB를 고르세요. 휴대폰 동영상은 보통 4K/60fps라서 1080p·30fps로만 바꿔도 화질 차이는 거의 없이 용량이 70~90% 줄어듭니다. 길거나 4K인 영상은 몇 분 걸릴 수 있으니 이 탭을 열어두세요.",
+    hint: "팁: 이메일로 보낼 때는 “용량 맞추기”에서 25 MB를 고르세요. 휴대폰 동영상은 보통 4K/60fps라서 1080p·30fps로만 바꿔도 화질 차이는 거의 없이 용량이 70~90% 줄어듭니다. 길거나 4K인 영상은 몇 분 걸릴 수 있으니 이 탭을 열어두세요.<br><b>영상이 많거나, AVI이거나, 아주 큰 파일인가요?</b> <a href="video-compress.bat" download>video-compress.bat</a> (Windows)에 동영상이나 폴더를 끌어다 놓으세요. 처음 한 번 ffmpeg(약 90 MB, 설치 없음)를 받고, 웹보다 훨씬 빠릅니다.",
     min: "분", sec: "초",
     engineDl: (a, b) => `변환 엔진 다운로드 중 (처음 한 번만)… ${a} / ${b}`,
-    slowMode: "호환 모드: 이 형식은 CPU로 변환하기 때문에 평소보다 느립니다 (긴 영상은 몇 분 걸림).",
+    slowMode: '호환 모드: 이 형식은 브라우저에서 CPU로 변환하기 때문에 느립니다. 긴 영상은 <a href="video-compress.bat" download>video-compress.bat</a> (Windows)을 쓰면 훨씬 빠릅니다.',
   },
 };
 let lang = "";
@@ -340,7 +341,7 @@ function showInfo() {
   $("infoMeta").textContent = parts.join(" · ");
   if (src.engine === "ffmpeg") {
     const n = document.createElement("div");
-    n.className = "warn"; n.textContent = t("slowMode");
+    n.className = "warn"; n.innerHTML = t("slowMode");
     $("infoMeta").appendChild(n);
   }
 }
